@@ -28,22 +28,21 @@ def extract_sra(sra_id, output_dir):
     print("Deleting directory for: " + sra_id)
     shutil.rmtree(f"./{sra_id}")
 
-def fetch_sra_metadata(sra_id, output_dir):
+def fetch_sra_metadata(sra_id):
     # Fetch metadata for each file using esearch and efetch
     metadata_fetch = f'esearch -db sra -query "{sra_id}" | efetch -format runinfo'
     print("Fetching SRA metadata for: " + sra_id)
     result = subprocess.check_output(metadata_fetch, shell=True)
 
-    # Write the metadata to the SRA_metadata.csv file
-    with open(f'{output_dir}/SRA_metadata.csv', 'a') as f:
-        if f.tell() == 0:
-            f.write(result.decode('utf-8'))
-        else:
-            f.write(result.decode('utf-8').split('\n', 1)[1])
+    # Parse the metadata and return it as a DataFrame
+    data = [row.split(',') for row in result.decode('utf-8').split('\n')]
+    df = pd.DataFrame(data[1:], columns=data[0])
+    df.set_index('Run', inplace=True)
+    return df
 
-def fetch_sample_metadata(sra_id, output_dir):
+def fetch_sample_metadata(sra_id):
     # Set your email address (required by NCBI)
-    Entrez.email = 'your.email@example.com'
+    Entrez.email = 'tomdemeter22@gmail.com'
 
     # Retrieve metadata for SRR accession
     handle = Entrez.esearch(db='sra', term=sra_id)
@@ -61,10 +60,7 @@ def fetch_sample_metadata(sra_id, output_dir):
         value = attribute.find('VALUE').text
         data[tag] = value
     df = pd.DataFrame(data, index=[0])
-
-    # Append the DataFrame to the sample_annotations.csv file
-    with open(f'{output_dir}/sample_annotations.csv', 'a') as f:
-        df.to_csv(f, header=f.tell() == 0, index=False)
+    return df
 
 parser = argparse.ArgumentParser(description='Process SRA files.')
 parser.add_argument('--input', type=str, help='Location of accession_numbers.txt')
@@ -87,10 +83,19 @@ with concurrent.futures.ThreadPoolExecutor() as executor:
 for sra_id in sra_numbers:
     extract_sra(sra_id, args.output)
 
-# Fetch SRA metadata one sample at a time and save it to a CSV file named SRA_metadata.csv
-for sra_id in sra_numbers:
-    fetch_sra_metadata(sra_id, args.output)
+# Create an empty DataFrame to store the final metadata
+srr_metadata = pd.DataFrame()
 
-# Fetch sample metadata one sample at a time and save it to a CSV file named sample_annotations.csv
+# Fetch SRA and sample metadata one sample at a time and append it to the final DataFrame
 for sra_id in sra_numbers:
-    fetch_sample_metadata(sra_id, args.output)
+    sample_df = fetch_sample_metadata(sra_id)
+    srr_df = fetch_sra_metadata(sra_id)
+  
+    # Join the two dataframes on the first column of srr_df and column SRR of sample_df
+    merged_df = pd.merge(sample_df, srr_df, right_index=True, left_on='SRR')
+    
+    # Append the merged dataframe to the final dataframe
+    srr_metadata = pd.concat([srr_metadata, merged_df])
+
+# Save the final dataframe to a CSV file named SRR_metadata.csv
+srr_metadata.to_csv(f'{args.output}/SRR_metadata.csv', index=False)

@@ -17,36 +17,42 @@ import pandas as pd
 configfile: "config/config.yaml" # where to find parameters
 WORKING_DIR = config["working_dir"]
 RESULT_DIR = config["result_dir"]
+samplefile = config["samples"]
 
 
 ########################
 # Samples and conditions
 ########################
-# read the table containing the sample, condition and fastq file information
-units = pd.read_table(config["units"], dtype=str).set_index(["sample"], drop=False)
-
 # create lists containing the sample names and conditions
-SAMPLES = units.index.get_level_values('sample').unique().tolist()
-samples = pd.read_csv(config["units"], dtype=str,index_col=0,sep="\t")
-samplefile = config["units"]
+samples = pd.read_csv(config["samples"], dtype=str, index_col=0)
+SAMPLES = samples.index.tolist()
 
 
 ###########################
 # Input functions for rules
 ###########################
-def sample_is_single_end(sample):
-    """This function detect missing value in the column 2 of the units.tsv"""
-    if "fq2" not in samples.columns:
-        return True
-    else:
-        return pd.isnull(samples.loc[(sample), "fq2"])
+def sample_is_single_end(sample_name):
+    """This function checks samples metadata for Library layout column 
+    and evaulate whether samples are single or paired end"""
+    library_layout_col = None
+    for col in samples.columns:
+        if col.lower().replace(" ", "") == "librarylayout":
+            library_layout_col = col
+            break
+    if library_layout_col is None:
+        raise ValueError("Column 'librarylayout' not found in DataFrame")
+    sample = samples.loc[sample_name]
+    return sample[library_layout_col].lower() != "paired"
+
 
 def get_fastq(wildcards):
-    """This function checks if the sample has paired end or single end reads and returns 1 or 2 names of the fastq files"""
-    if sample_is_single_end(wildcards.sample):
-        return samples.loc[(wildcards.sample), ["fq1"]].dropna()
+    """This function checks if the sample has paired end or single end reads 
+    and returns either the value of the sample attribute of the wildcards object if single end 
+    or with _1 or _2 attached to the string if paired"""
+    if sample_is_single_end(wildcards.SRR):
+        return WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}" + ".fastq.gz"
     else:
-        return samples.loc[(wildcards.sample), ["fq1", "fq2"]].dropna()
+        return (WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_1" + ".fastq.gz", WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_2" + ".fastq.gz")
 
 def get_trim_names(wildcards):
     """
@@ -54,12 +60,12 @@ def get_trim_names(wildcards):
       1. Checks if the sample is paired end or single end
       2. Returns the correct input and output trimmed file names. 
     """
-    if sample_is_single_end(wildcards.sample):
-        inFile = samples.loc[(wildcards.sample), ["fq1"]].dropna()
-        return "--in1 " + inFile[0] + " --out1 " + WORKING_DIR + "trimmed/" + wildcards.sample + "_R1_trimmed.fq.gz" 
+    inFile = get_fastq(wildcards)
+
+    if sample_is_single_end(wildcards.SRR):
+        return "--in1 " + inFile[0] + " --out1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_trimmed.fq.gz" 
     else:
-        inFile = samples.loc[(wildcards.sample), ["fq1", "fq2"]].dropna()
-        return "--in1 " + inFile[0] + " --in2 " + inFile[1] + " --out1 " + WORKING_DIR + "trimmed/" + wildcards.sample + "_R1_trimmed.fq.gz --out2 "  + WORKING_DIR + "trimmed/" + wildcards.sample + "_R2_trimmed.fq.gz"
+        return "--in1 " + inFile[0] + " --in2 " + inFile[1] + " --out1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz --out2 "  + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
 def get_hisat2_names(wildcards):
     """
@@ -67,17 +73,17 @@ def get_hisat2_names(wildcards):
       1. Checks if the sample is paired end or single end.
       2. Returns the correct input file names for Hisat2 mapping step.
     """
-    if sample_is_single_end(wildcards.sample):
-        return WORKING_DIR + "trimmed/" + wildcards.sample + "_R1_trimmed.fq.gz"     
+    if sample_is_single_end(wildcards.SRR):
+        return WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz"     
     else:
-        return WORKING_DIR + "trimmed/" + wildcards.sample + "_R1_trimmed.fq.gz " + WORKING_DIR + "trimmed/" + wildcards.sample + "_R2_trimmed.fq.gz"
+        return WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
 
 #################
 # Desired outputs
 #################
 MULTIQC = RESULT_DIR + "multiqc_report.html"
-BAM_FILES = expand(RESULT_DIR + "hisat2/{sample}_Aligned.sortedByCoord.out.bam", sample = SAMPLES)
+BAM_FILES = expand(RESULT_DIR + "hisat2/{SRR}_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MAPPING_REPORT = RESULT_DIR + "mapping_summary.csv"
 
 if config["keep_working_dir"] == False:
@@ -86,13 +92,13 @@ if config["keep_working_dir"] == False:
             MULTIQC,
             BAM_FILES, 
             MAPPING_REPORT,
-            RESULT_DIR + "raw_counts.parsed.tsv",
-            RESULT_DIR + "scaled_counts.tsv"
+            RESULT_DIR + "raw_counts.parsed.tsv",       #maybe csv?
+            RESULT_DIR + "scaled_counts.tsv"            #maybe csv?
         message:
             "RNA-seq pipeline run complete!"
         shell:
             "cp config/config.yaml {RESULT_DIR};"
-            "cp config/samples.tsv {RESULT_DIR};"
+            "cp config/samples.tsv {RESULT_DIR};"       #maybe csv?
             "rm -r {WORKING_DIR}"
 elif config["keep_working_dir"] == True:
     rule all:
@@ -100,13 +106,13 @@ elif config["keep_working_dir"] == True:
             MULTIQC,
             BAM_FILES, 
             MAPPING_REPORT,
-            RESULT_DIR + "raw_counts.parsed.tsv",
-            RESULT_DIR + "scaled_counts.tsv"
+            RESULT_DIR + "raw_counts.parsed.tsv",       #maybe csv?
+            RESULT_DIR + "scaled_counts.tsv"            #maybe csv?
         message:
             "RNA-seq pipeline run complete!"
         shell:
             "cp config/config.yaml {RESULT_DIR};"
-            "cp config/samples.tsv {RESULT_DIR};"
+            "cp config/samples.tsv {RESULT_DIR};"       #maybe csv?
 else:
     raise ValueError('Please specify only "True" or "False" for the "keep_working_dir" parameter in the config file.')
 
@@ -144,16 +150,16 @@ rule fastp:
     input:
         get_fastq
     output:
-        fq1  = WORKING_DIR + "trimmed/" + "{sample}_R1_trimmed.fq.gz",
-        fq2  = WORKING_DIR + "trimmed/" + "{sample}_R2_trimmed.fq.gz",
-        html = WORKING_DIR + "fastp/{sample}_fastp.html",
-        json = WORKING_DIR + "fastp/{sample}_fastp.json"
-    message:"trimming {wildcards.sample} reads"
+        fq1  = WORKING_DIR + "trimmed/" + "{SRR}_R1_trimmed.fq.gz",
+        fq2  = WORKING_DIR + "trimmed/" + "{SRR}_R2_trimmed.fq.gz",
+        html = WORKING_DIR + "fastp/{SRR}_fastp.html",
+        json = WORKING_DIR + "fastp/{SRR}_fastp.json"
+    message:"trimming {wildcards.SRR} reads"
     threads: 5
     log:
-        RESULT_DIR + "fastp/{sample}.log.txt"
+        RESULT_DIR + "fastp/{SRR}.log.txt"
     params:
-        sampleName = "{sample}",
+        sampleName = "{SRR}",
         in_and_out_files =  get_trim_names,
         qualified_quality_phred = config["fastp"]["qualified_quality_phred"]
     resources: cpus=5
@@ -168,7 +174,7 @@ rule fastp:
 
 rule multiqc:
     input:
-        expand(WORKING_DIR + "fastp/{sample}_fastp.json", sample = SAMPLES)
+        expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES)
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
@@ -186,18 +192,17 @@ rule multiqc:
 #########################
 rule hisat2_samtools:
     input:
-        read1= WORKING_DIR + "trimmed/" + "{sample}_R1_trimmed.fq.gz",
-        read2= WORKING_DIR + "trimmed/" + "{sample}_R2_trimmed.fq.gz"
+        read1= WORKING_DIR + "trimmed/" + "{SRR}_R1_trimmed.fq.gz",
+        read2= WORKING_DIR + "trimmed/" + "{SRR}_R2_trimmed.fq.gz"
     output:
-        bam = RESULT_DIR + "hisat2/{sample}_Aligned.sortedByCoord.out.bam",
-        log = RESULT_DIR + "hisat2/{sample}_Log.final.out"
+        bam = RESULT_DIR + "hisat2/{SRR}_Aligned.sortedByCoord.out.bam",
+        log = RESULT_DIR + "hisat2/{SRR}_Log.final.out"
     message:
         "Mapping {wildcards.sample} reads to genome"
     params:
-        sample_name             =  "{sample}",
-        prefix                  =  RESULT_DIR + "hisat2/{sample}_"
+        sample_name             =  "{SRR}",
+        prefix                  =  RESULT_DIR + "hisat2/{SRR}_",
         hisat2_input_file_names =  get_hisat2_names,
-        prefix                  =  RESULT_DIR + "hisat2/{sample}_",
         genome_index            =  WORKING_DIR + "GRCm39_index/"
     threads: 10
     resources: cpus=10
@@ -212,8 +217,7 @@ rule hisat2_samtools:
 
 
 
-
-
+'''
 
 
 
@@ -274,3 +278,4 @@ rule trimmomatic:
         log="data/trimmed_reads/{sra}.log"
     shell:
         "trimmomatic PE -threads {threads} {input.read1} {input.read2} {output.forwardPaired} {output.reversePaired} ILLUMINACLIP:data/NEBNext_Ultra_II_RNA_Library_Prep_Kit.fa:2:30:10:2:keepBothReads LEADING:3 TRAILING:3 MINLEN:36 2>{params.log}"
+'''

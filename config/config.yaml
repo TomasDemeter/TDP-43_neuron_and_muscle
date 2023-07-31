@@ -1,7 +1,7 @@
 ---
 # directories
 result_dir:  results/         # should be kept
-working_dir: temp/            # can be removed (temporary files)
+working_dir: data/            # can be removed (temporary files)
 keep_working_dir: TRUE        # if TRUE then 'working_dir' is kept at the completion of the pipeline. if FALSE, it is deleted. 
 
 
@@ -13,7 +13,7 @@ refs:
 
 
 # samples to condition
-units: config/samples.tsv
+samples: data/raw_reads/SRR_metadata.csv
 
 # read quality trimming
 fastp:
