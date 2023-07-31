@@ -83,7 +83,7 @@ def get_hisat2_names(wildcards):
 # Desired outputs
 #################
 MULTIQC = RESULT_DIR + "multiqc_report.html"
-BAM_FILES = expand(RESULT_DIR + "hisat2/{SRR}_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
+BAM_FILES = expand(RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MAPPING_REPORT = RESULT_DIR + "mapping_summary.csv"
 
 if config["keep_working_dir"] == False:
@@ -195,13 +195,13 @@ rule hisat2_samtools:
         read1= WORKING_DIR + "trimmed/" + "{SRR}_R1_trimmed.fq.gz",
         read2= WORKING_DIR + "trimmed/" + "{SRR}_R2_trimmed.fq.gz"
     output:
-        bam = RESULT_DIR + "hisat2/{SRR}_Aligned.sortedByCoord.out.bam",
-        log = RESULT_DIR + "hisat2/{SRR}_Log.final.out"
+        bam = RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam",
+        log = RESULT_DIR + "hisat2_aligned/{SRR}_Log.final.out"
     message:
         "Mapping {wildcards.sample} reads to genome"
     params:
         sample_name             =  "{SRR}",
-        prefix                  =  RESULT_DIR + "hisat2/{SRR}_",
+        prefix                  =  RESULT_DIR + "hisat2_aligned/{SRR}_",
         hisat2_input_file_names =  get_hisat2_names,
         genome_index            =  WORKING_DIR + "GRCm39_index/"
     threads: 10
