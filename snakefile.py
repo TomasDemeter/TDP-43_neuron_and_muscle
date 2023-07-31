@@ -50,9 +50,9 @@ def get_fastq(wildcards):
     and returns either the value of the sample attribute of the wildcards object if single end 
     or with _1 or _2 attached to the string if paired"""
     if sample_is_single_end(wildcards.SRR):
-        return WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}" + ".fastq.gz"
+        return WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}" + ".fastq"
     else:
-        return (WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_1" + ".fastq.gz", WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_2" + ".fastq.gz")
+        return (WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_1" + ".fastq", WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_2" + ".fastq")
 
 def get_trim_names(wildcards):
     """
@@ -74,9 +74,9 @@ def get_hisat2_names(wildcards):
       2. Returns the correct input file names for Hisat2 mapping step.
     """
     if sample_is_single_end(wildcards.SRR):
-        return WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz"     
+        return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz"     
     else:
-        return WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
+        return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz " + "-2 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
 
 #################
@@ -98,7 +98,7 @@ if config["keep_working_dir"] == False:
             "RNA-seq pipeline run complete!"
         shell:
             "cp config/config.yaml {RESULT_DIR};"
-            "cp config/samples.tsv {RESULT_DIR};"       #maybe csv?
+            "cp data/raw_samples/SRR_metadata.csv {RESULT_DIR};"
             "rm -r {WORKING_DIR}"
 elif config["keep_working_dir"] == True:
     rule all:
@@ -112,11 +112,11 @@ elif config["keep_working_dir"] == True:
             "RNA-seq pipeline run complete!"
         shell:
             "cp config/config.yaml {RESULT_DIR};"
-            "cp config/samples.tsv {RESULT_DIR};"       #maybe csv?
+            "cp data/raw_samples/SRR_metadata.csv {RESULT_DIR};"      
 else:
     raise ValueError('Please specify only "True" or "False" for the "keep_working_dir" parameter in the config file.')
 
-'''
+
 ###########################
 # Genome reference indexing
 ###########################
@@ -125,22 +125,21 @@ rule hisat2_index:
         fasta = config["refs"]["genome"],
         gtf =   config["refs"]["gtf"]
     output:
-        genome_index = [WORKING_DIR + "GRCm39_index/"]
+        genome_index = config["refs"]["index"]
     message:
         "generating Hisat2 genome index"
-    params:
-        genome_dir = WORKING_DIR + "genome/"
     threads:
-        16
+        20
     resources:
         mem_mb=50000
     shell:
-        "mkdir -p {params.genome_dir}; " # create dir if not existing already
-        "extract_splice_sites.py {input.gtf} > splice_sites.txt; " # 
-        "hisat2-build -p {threads} "
-        "-ss splice_sites.txt "
-        "-f {input.fasta}"
-'''        
+        "mkdir -p {output.genome_index}; " 
+        "extract_splice_sites.py {input.gtf} > {output.genome_index}/splice_sites.txt; "
+        "hisat2-build -f {input.fasta} "
+        "{output.genome_index} "
+        "-ss {output.genome_index}/splice_sites.txt "
+        "-p {threads}"
+
 
 
 #######################
@@ -154,7 +153,8 @@ rule fastp:
         fq2  = WORKING_DIR + "trimmed/" + "{SRR}_R2_trimmed.fq.gz",
         html = WORKING_DIR + "fastp/{SRR}_fastp.html",
         json = WORKING_DIR + "fastp/{SRR}_fastp.json"
-    message:"trimming {wildcards.SRR} reads"
+    message:
+        "trimming {wildcards.SRR} reads"
     threads: 5
     log:
         RESULT_DIR + "fastp/{SRR}.log.txt"
@@ -164,6 +164,8 @@ rule fastp:
         qualified_quality_phred = config["fastp"]["qualified_quality_phred"]
     resources: cpus=5
     shell:
+        "mkdir -p {RESULT_DIR}trimmed; "
+        "mkdir -p {RESULT_DIR}fastp; "
         "touch {output.fq2}; "
         "fastp --thread {threads}  "
         "--html {output.html} "
@@ -192,90 +194,33 @@ rule multiqc:
 #########################
 rule hisat2_samtools:
     input:
-        read1= WORKING_DIR + "trimmed/" + "{SRR}_R1_trimmed.fq.gz",
-        read2= WORKING_DIR + "trimmed/" + "{SRR}_R2_trimmed.fq.gz"
+        genome_index = config["refs"]["index"],
+        hisat2_input_file_names =  get_hisat2_names
     output:
         bam = RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam",
         log = RESULT_DIR + "hisat2_aligned/{SRR}_Log.final.out"
     message:
-        "Mapping {wildcards.sample} reads to genome"
-    params:
-        sample_name             =  "{SRR}",
-        prefix                  =  RESULT_DIR + "hisat2_aligned/{SRR}_",
-        hisat2_input_file_names =  get_hisat2_names,
-        genome_index            =  WORKING_DIR + "GRCm39_index/"
-    threads: 10
-    resources: cpus=10
+        "Mapping {wildcards.SRR} reads to genome"
+    threads: 5
+    resources: cpus=5
     shell:
-        "hisat2 -x {params.genome_index} "
+        "hisat2 -x {input.genome_index} "
+        "{input.hisat2_input_file_names} "
+        "2> {output.log} "
         "-p {threads} "
-        "-1 {input.read1} "
-        "-2 {input.read2} "
         "| samtools sort -o {output.bam}"
 
-
-
-
-
 '''
-
-
-
-# add esearch 
-
-# Read the accession numbers from the file
-with open('data/accession_numbers.txt') as f:
-    accessions = [line.strip() for line in f]
-
-SRA, FRR = glob_wildcards("data/raw/raw_reads/{sra}_{frr}.fastq.gz")
-
-rule all:
+rule generate_mapping_summary:
     input:
-        expand("data/raw/raw_reads/{accession}.fastq", accession=accessions),
-        expand("data/raw/raw_QC/{sra}_{frr}_fastqc.{extension}", sra=SRA, frr=FRR, extension=["zip", "html"]),
-        expand("data/hisat2_aligned/{sra}_aligned.bam", sra=SRA)
-
-rule prefetch_sra:
+        expand(RESULT_DIR + "hisat2_aligned/{sample}_Log.final.out", sample = SAMPLES)
     output:
-        temp("{accession}.sra")
-    shell:
-        "prefetch {wildcards.accession}"
-
-rule fasterq_dump:
-    input:
-        rules.prefetch_sra.output
+        RESULT_DIR + "mapping_summary.csv"
+    message:
+        "Concatenating Hisat2 mapping report and generating .csv mapping summary."
     params:
-        outdir = 'data/raw/raw_reads'
-    output:
-        "{params.outdir}/{accession}.fastq"
+        directory_with_mapping_reports = RESULT_DIR + "hisat2_aligned/",
+        star_directory_name = RESULT_DIR + "hisat2_aligned/"
     shell:
-        "fasterq-dump {input} --outdir {params.outdir} --split-files --skip-technical --progress"
-
-rule rawFastqc:
-    input:
-        raw_reads="data/raw/raw_reads/{sra}_{frr}.fastq.gz"
-    output:
-        zip="data/raw/raw_QC/{sra}_{frr}_fastqc.zip",
-        html="data/raw/raw_QC/{sra}_{frr}_fastqc.html"
-    threads:
-        1
-    params:
-        path="data/raw/raw_QC"
-    shell:
-        "fastqc {input.raw_reads} --threads {threads} -o {params.path}"
-
-rule trimmomatic:
-    input:
-        read1="data/trimmed_reads/{sra}_1.fastq",
-        read2="data/trimmed_reads/{sra}_2.fastq"
-    output:
-        forwardPaired="data/trimmed_reads/{sra}_1.fastq",
-        reversePaired="data/trimmed_reads/{sra}_2.fastq"
-    threads:
-        1
-    params:
-        basename="data/trimmed_reads/{sra}",
-        log="data/trimmed_reads/{sra}.log"
-    shell:
-        "trimmomatic PE -threads {threads} {input.read1} {input.read2} {output.forwardPaired} {output.reversePaired} ILLUMINACLIP:data/NEBNext_Ultra_II_RNA_Library_Prep_Kit.fa:2:30:10:2:keepBothReads LEADING:3 TRAILING:3 MINLEN:36 2>{params.log}"
+        "python scripts/generate_mapping_summary.py {params.directory_with_mapping_reports} {params.star_directory_name} {output}"
 '''
