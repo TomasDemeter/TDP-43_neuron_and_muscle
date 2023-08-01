@@ -76,13 +76,13 @@ def get_hisat2_names(wildcards):
     if sample_is_single_end(wildcards.SRR):
         return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz"     
     else:
-        return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz " + "-2 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
+        return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz" + " -2 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
 
 #################
 # Desired outputs
-#################
-MULTIQC = RESULT_DIR + "multiqc_report.html"
+#################                                                                                                                           will require changes!!!!!!!!!!!!!!!!!
+MULTIQC = RESULT_DIR + "multiqc_report/multiqc_report.html"
 BAM_FILES = expand(RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MAPPING_REPORT = RESULT_DIR + "mapping_summary.csv"
 
@@ -98,7 +98,7 @@ if config["keep_working_dir"] == False:
             "RNA-seq pipeline run complete!"
         shell:
             "cp config/config.yaml {RESULT_DIR};"
-            "cp data/raw_samples/SRR_metadata.csv {RESULT_DIR};"
+            "cp data/raw_reads/SRR_metadata.csv {RESULT_DIR};"
             "rm -r {WORKING_DIR}"
 elif config["keep_working_dir"] == True:
     rule all:
@@ -112,7 +112,7 @@ elif config["keep_working_dir"] == True:
             "RNA-seq pipeline run complete!"
         shell:
             "cp config/config.yaml {RESULT_DIR};"
-            "cp data/raw_samples/SRR_metadata.csv {RESULT_DIR};"      
+            "cp data/raw_reads/SRR_metadata.csv {RESULT_DIR};"      
 else:
     raise ValueError('Please specify only "True" or "False" for the "keep_working_dir" parameter in the config file.')
 
@@ -125,19 +125,18 @@ rule hisat2_index:
         fasta = config["refs"]["genome"],
         gtf =   config["refs"]["gtf"]
     output:
-        genome_index = config["refs"]["index"]
+        genome_index = config["refs"]["index"],
+        splice_sites = directory(config["refs"]["splice_sites"])
     message:
         "generating Hisat2 genome index"
     threads:
         20
-    resources:
-        mem_mb=50000
     shell:
-        "mkdir -p {output.genome_index}; " 
-        "extract_splice_sites.py {input.gtf} > {output.genome_index}/splice_sites.txt; "
+        "mkdir -p {output.genome_index}; "
+        "mkdir -p {output.splice_sites}; "
+        "extract_splice_sites.py {input.gtf} > {output.splice_sites}/splice_sites.txt; "
         "hisat2-build -f {input.fasta} "
-        "{output.genome_index} "
-        "-ss {output.genome_index}/splice_sites.txt "
+        "{output.genome_index}GRCm39_index "
         "-p {threads}"
 
 
@@ -149,44 +148,40 @@ rule fastp:
     input:
         get_fastq
     output:
-        fq1  = WORKING_DIR + "trimmed/" + "{SRR}_R1_trimmed.fq.gz",
-        fq2  = WORKING_DIR + "trimmed/" + "{SRR}_R2_trimmed.fq.gz",
         html = WORKING_DIR + "fastp/{SRR}_fastp.html",
         json = WORKING_DIR + "fastp/{SRR}_fastp.json"
     message:
         "trimming {wildcards.SRR} reads"
     threads: 5
     log:
-        RESULT_DIR + "fastp/{SRR}.log.txt"
+        log_file = WORKING_DIR + "fastp/{SRR}.log.txt"
     params:
-        sampleName = "{SRR}",
-        in_and_out_files =  get_trim_names,
-        qualified_quality_phred = config["fastp"]["qualified_quality_phred"]
+        qualified_quality_phred = config["fastp"]["qualified_quality_phred"],
+        in_and_out_files =  get_trim_names
     resources: cpus=5
     shell:
-        "mkdir -p {RESULT_DIR}trimmed; "
-        "mkdir -p {RESULT_DIR}fastp; "
-        "touch {output.fq2}; "
+        "mkdir -p {WORKING_DIR}fastp; "
+        "mkdir -p {WORKING_DIR}trimmed; "
         "fastp --thread {threads}  "
         "--html {output.html} "
         "--json {output.json} "
         "--qualified_quality_phred {params.qualified_quality_phred} "
         "{params.in_and_out_files} "
-        "2>{log}"
+        "2>{log.log_file}"
 
 rule multiqc:
     input:
         expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES)
     output:
-        RESULT_DIR + "multiqc_report.html"
+        outdir = RESULT_DIR + "multiqc_report/multiqc_report.html"
     params:
-        fastp_directory = WORKING_DIR + "fastp/",
-        outdir = RESULT_DIR
+        fastp_directory = WORKING_DIR + "fastp/"
     message: "Summarising fastp reports with multiqc"
     shell:
+        "mkdir -p {RESULT_DIR}multiqc_report; "
         "multiqc --force "
-        "--outdir {params.outdir} "
-        "{params.fastp_directory} "
+        "--outdir {output.outdir} "
+        "{params.fastp_directory}"
 
 
 #########################
@@ -194,20 +189,23 @@ rule multiqc:
 #########################
 rule hisat2_samtools:
     input:
-        genome_index = config["refs"]["index"],
-        hisat2_input_file_names =  get_hisat2_names
+        genome_index = config["refs"]["index"]
     output:
         bam = RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam",
         log = RESULT_DIR + "hisat2_aligned/{SRR}_Log.final.out"
+    params:
+        hisat2_input_file_names =  get_hisat2_names,
+        splice_sites = config["refs"]["splice_sites"]
     message:
         "Mapping {wildcards.SRR} reads to genome"
     threads: 5
     resources: cpus=5
     shell:
-        "hisat2 -x {input.genome_index} "
-        "{input.hisat2_input_file_names} "
+        "hisat2 -x {input.genome_index}/GRCm39_index "
+        "{params.hisat2_input_file_names} "
         "2> {output.log} "
         "-p {threads} "
+        "--known-splicesite-infile {params.splice_sites}/splice_sites.txt"
         "| samtools sort -o {output.bam}"
 
 '''

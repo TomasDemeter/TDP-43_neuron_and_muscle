@@ -9,7 +9,8 @@ keep_working_dir: TRUE        # if TRUE then 'working_dir' is kept at the comple
 refs:
   genome: "config/refs/Mus_musculus.GRCm39.dna.primary_assembly.fa" 
   gtf:    "config/refs/Mus_musculus.GRCm39.110.gtf"
-  #index:  "config/ref/hisat_index/GRCm39_index"
+  index:  "config/refs/GRCm39_index/"
+  splice_sites: "config/refs/GRCm39_index/splice_sites/"
 
 
 # samples to condition
@@ -17,7 +18,7 @@ samples: data/raw_reads/SRR_metadata.csv
 
 # read quality trimming
 fastp:
-  qualified_quality_phred: 30 # Phred+33 score (> 15 for Proton Ion, > 30 or more for Illumina) 
+  qualified_quality_phred: 20 # Phred+33 score (> 15 for Proton Ion, > 30 or more for Illumina) 
 
 
 ######
