@@ -175,8 +175,7 @@ rule hisat2_samtools:
         splice_sites = config["refs"]["splice_sites"]
     message:
         "Mapping {wildcards.SRR} reads to genome"
-    threads: 10
-    resources: cpus=10
+    threads: 5
     shell:
         "hisat2 -x {config[refs][index]}/GRCm39_index "
         "{params.hisat2_input_file_names} "
