@@ -60,3 +60,6 @@ config/ref/hisat_index/GRCm39_index.5.ht2
 config/ref/hisat_index/GRCm39_index.2.ht2
 config/ref/hisat_index/GRCm39_index.4.ht2
 config/ref/hisat_index/GRCm39_index.1.ht2
+config/ref/hisat_index/GRCm39_index.3.ht2
+config/ref/hisat_index/GRCm39_index.7.ht2
+config/ref/hisat_index/GRCm39_index.8.ht2
