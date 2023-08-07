@@ -107,7 +107,7 @@ rule hisat2_index:
     message:
         "generating Hisat2 genome index"
     threads:
-        20
+        14
     params:
         dirs = config["refs"]["directories"]
     shell:
@@ -128,7 +128,7 @@ rule fastp:
         json = WORKING_DIR + "fastp/{SRR}_fastp.json"
     message:
         "trimming {wildcards.SRR} reads"
-    threads: 5
+    threads: 7
     log:
         log_file = WORKING_DIR + "fastp/{SRR}.log.txt"
     params:
@@ -160,7 +160,6 @@ rule multiqc:
         "{params.fastp_directory}"
 
 
-
 #########################
 # RNA-Seq read alignement
 #########################
@@ -175,7 +174,7 @@ rule hisat2_samtools:
         splice_sites = config["refs"]["splice_sites"]
     message:
         "Mapping {wildcards.SRR} reads to genome"
-    threads: 5
+    threads: 7
     shell:
         "hisat2 -x {config[refs][index]}/GRCm39_index "
         "{params.hisat2_input_file_names} "
