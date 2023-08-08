@@ -147,18 +147,23 @@ rule fastp:
 
 rule multiqc:
     input:
-        expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES)
+        fastp_input = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
+        hisat2_input = expand(RESULT_DIR + "hisat2_aligned/{SRR}_Log.final.out", SRR = SAMPLES)
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
         fastp_directory = WORKING_DIR + "fastp/",
+        hisat2_directory = RESULT_DIR + "hisat2_aligned/",
         outdir = RESULT_DIR
-    message: "Summarising fastp reports with multiqc"
+    message: "Summarising fastp and hisat2 reports with multiqc"
     shell:
         "multiqc --force "
         "--outdir {params.outdir} "
-        "{params.fastp_directory}"
-
+        "{params.fastp_directory} "
+        "{params.hisat2_directory} "
+        "--module fastp "
+        "--module hisat2"
+        
 
 #########################
 # RNA-Seq read alignement
@@ -180,7 +185,8 @@ rule hisat2_samtools:
         "{params.hisat2_input_file_names} "
         "2> {output.log} "
         "-p {threads} "
-        "--known-splicesite-infile {params.splice_sites}"
+        "--known-splicesite-infile {params.splice_sites} "
+        "--new-summary "
         "| samtools sort -o {output.bam}"
 
 '''
