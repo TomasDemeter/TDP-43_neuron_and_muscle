@@ -83,7 +83,7 @@ def get_hisat2_names(wildcards):
 # Desired outputs
 #################
 MULTIQC = RESULT_DIR + "multiqc_report.html"
-BAM_FILES = expand(RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
+BAM_FILES = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 #MAPPING_REPORT = RESULT_DIR + "mapping_summary.csv"
 
 rule all:
@@ -148,7 +148,7 @@ rule fastp:
 rule multiqc:
     input:
         fastp_input = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
-        hisat2_input = expand(RESULT_DIR + "hisat2_aligned/{SRR}_Log.final.out", SRR = SAMPLES)
+        hisat2_input = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES)
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
@@ -172,8 +172,8 @@ rule hisat2_samtools:
     input:
         genome_index = expand("{index}/GRCm39_index.{n}.ht2", index=config["refs"]["index"], n=range(1,9))
     output:
-        bam = RESULT_DIR + "hisat2_aligned/{SRR}_Aligned.sortedByCoord.out.bam",
-        log = RESULT_DIR + "hisat2_aligned/{SRR}_Log.final.out"
+        bam = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam",
+        log = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out"
     params:
         hisat2_input_file_names =  get_hisat2_names,
         splice_sites = config["refs"]["splice_sites"]
@@ -192,7 +192,7 @@ rule hisat2_samtools:
 '''
 rule generate_mapping_summary:
     input:
-        expand(RESULT_DIR + "hisat2_aligned/{sample}_Log.final.out", sample = SAMPLES)
+        expand(RESULT_DIR + "hisat2_aligned/{sample}_fastp_Log.final.out", sample = SAMPLES)
     output:
         RESULT_DIR + "mapping_summary.csv"
     message:
