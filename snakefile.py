@@ -16,15 +16,15 @@ import pandas as pd
 ###############
 configfile: "config/config.yaml" # where to find parameters
 WORKING_DIR = config["working_dir"]
-RESULT_DIR = config["result_dir"]
-samplefile = config["samples"]
+RESULT_DIR  = config["result_dir"]
+samplefile  = config["samples"]
 
 
 ########################
 # Samples and conditions
 ########################
 # create lists containing the sample names and conditions
-samples = pd.read_csv(config["samples"], dtype=str, index_col=0)
+samples = pd.read_csv(config["samples"], dtype = str, index_col = 0)
 SAMPLES = samples.index.tolist()
 
 
@@ -82,14 +82,23 @@ def get_hisat2_names(wildcards):
 #################
 # Desired outputs
 #################
-MULTIQC = RESULT_DIR + "multiqc_report.html"
-BAM_FILES = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
-#MAPPING_REPORT = RESULT_DIR + "mapping_summary.csv"
+BAM_FILES       = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
+MULTIQC         = RESULT_DIR + "multiqc_report.html"
+COUNTS          = RESULT_DIR + "featire_counts_table.tsv"
+#RAW_COUNTS      = RESULT_DIR + "raw_counts.parsed.csv"
+#SCALED_COUNTS   = RESULT_DIR + "scaled_counts.csv"
 
+
+###########################
+# Pipeline
+###########################
 rule all:
     input:
+        BAM_FILES,
         MULTIQC,
-        BAM_FILES
+        COUNTS
+#        RAW_COUNTS,
+#        SCALED_COUNTS
     message:
         "RNA-seq pipeline run complete!"
 
@@ -99,15 +108,15 @@ rule all:
 ###########################
 rule hisat2_index:
     input:
-        fasta = config["refs"]["genome"],
-        gtf =   config["refs"]["gtf"]
+        fasta   = config["refs"]["genome"],
+        gtf     = config["refs"]["gtf"]
     output:
-        genome_index = expand("{index}/GRCm39_index.{n}.ht2", index=config["refs"]["index"], n=range(1,9)),
+        genome_index = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9)),
         splice_sites = config["refs"]["splice_sites"]
     message:
         "generating Hisat2 genome index"
     threads:
-        14
+        12
     params:
         dirs = config["refs"]["directories"]
     shell:
@@ -116,6 +125,7 @@ rule hisat2_index:
         "hisat2-build -f {input.fasta} "
         "{config[refs][index]}/GRCm39_index "
         "-p {threads}"
+
 
 #######################
 # RNA-seq read trimming
@@ -128,33 +138,68 @@ rule fastp:
         json = WORKING_DIR + "fastp/{SRR}_fastp.json"
     message:
         "trimming {wildcards.SRR} reads"
-    threads: 7
+    threads: 4
     log:
         log_file = WORKING_DIR + "fastp/{SRR}.log.txt"
     params:
-        qualified_quality_phred = config["fastp"]["qualified_quality_phred"],
-        in_and_out_files =  get_trim_names
-    resources: cpus=5
+        in_and_out_files    = get_trim_names,
+        window_size         = config["fastp"]["window_size"],
+        cut_mean_quality    = config["fastp"]["cut_mean_quality"],
+        adapters            = config["fastp"]["adapters"]          
     shell:
         "mkdir -p {WORKING_DIR}fastp; "
         "mkdir -p {WORKING_DIR}trimmed; "
-        "fastp --thread {threads}  "
+        "fastp --thread {threads} "
+        "--cut_window_size {params.window_size} "
+        "--cut_mean_quality {params.cut_mean_quality} "
+        "--adapter_fasta {params.adapters} "
         "--html {output.html} "
         "--json {output.json} "
-        "--qualified_quality_phred {params.qualified_quality_phred} "
+        "--cut_tail "
+        "--cut_front "
         "{params.in_and_out_files} "
         "2>{log.log_file}"
+        
 
+#########################
+# RNA-Seq read alignement
+#########################
+rule hisat2_samtools:
+    input:
+        genome_index    = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9))
+    output:
+        bam     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam",
+        log     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out",
+        summary = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Summary.txt"
+    params:
+        hisat2_input_file_names = get_hisat2_names,
+        splice_sites            = config["refs"]["splice_sites"]
+    message:
+        "Mapping {wildcards.SRR} reads to genome"
+    threads: 4
+    shell:
+        "hisat2 -x {config[refs][index]}/GRCm39_index "
+        "{params.hisat2_input_file_names} "
+        "2> {output.log} "
+        "-p {threads} "
+        "--known-splicesite-infile {params.splice_sites} "
+        "--new-summary --summary-file {output.summary} "
+        "| samtools sort -o {output.bam}"
+
+
+#############################
+# Trimming and mapping report
+#############################
 rule multiqc:
     input:
-        fastp_input = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
-        hisat2_input = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES)
+        fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
+        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Summary.txt", SRR = SAMPLES)
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
-        fastp_directory = WORKING_DIR + "fastp/",
-        hisat2_directory = RESULT_DIR + "hisat2_aligned/",
-        outdir = RESULT_DIR
+        fastp_directory     = WORKING_DIR + "fastp/",
+        hisat2_directory    = RESULT_DIR + "hisat2_aligned/",
+        outdir              = RESULT_DIR
     message: "Summarising fastp and hisat2 reports with multiqc"
     shell:
         "multiqc --force "
@@ -165,41 +210,47 @@ rule multiqc:
         "--module hisat2"
         
 
-#########################
-# RNA-Seq read alignement
-#########################
-rule hisat2_samtools:
+##################################
+# Produce table of raw gene counts
+##################################
+rule featureCounts:
     input:
-        genome_index = expand("{index}/GRCm39_index.{n}.ht2", index=config["refs"]["index"], n=range(1,9))
+        bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES),
+        gtf     = config["refs"]["gtf"]
     output:
-        bam = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam",
-        log = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out"
-    params:
-        hisat2_input_file_names =  get_hisat2_names,
-        splice_sites = config["refs"]["splice_sites"]
-    message:
-        "Mapping {wildcards.SRR} reads to genome"
-    threads: 7
+       RESULT_DIR + "featire_counts_table.tsv"
+    message: "Producing the table of raw counts (counting read multimappers)"
+    threads: 12
     shell:
-        "hisat2 -x {config[refs][index]}/GRCm39_index "
-        "{params.hisat2_input_file_names} "
-        "2> {output.log} "
-        "-p {threads} "
-        "--known-splicesite-infile {params.splice_sites} "
-        "--new-summary "
-        "| samtools sort -o {output.bam}"
+        "featureCounts -T{threads} -s 1 -t exon -g transcript_id -F 'GTF' -a {input.gtf} -o {output} {input.bams}"
+        
+'''     
+#####################################
+# Produce table of scaled gene counts
+#####################################
+rule parse_raw_counts:
+    input:
+        WORKING_DIR + "raw_counts.csv"
+    output:
+        RESULT_DIR + "raw_counts.parsed.csv"
+    message: 
+        "Parsing the raw counts file for scaling (removal of comment and header renaming)"
+    params:
+        hisat2_result_dir_name = RESULT_DIR + "hisat2_aligned/"
+    shell:
+        "Rscript --vanilla scripts/parse_raw_counts.R {input} {params.star_result_dir_name} {output}"
+        
 
-'''
-rule generate_mapping_summary:
+#########################################
+# Produce table of normalised gene counts
+#########################################
+rule normalise_raw_counts:
     input:
-        expand(RESULT_DIR + "hisat2_aligned/{sample}_fastp_Log.final.out", sample = SAMPLES)
+        raw = RESULT_DIR + "raw_counts.parsed.csv"
     output:
-        RESULT_DIR + "mapping_summary.csv"
+        norm = RESULT_DIR + "scaled_counts.csv"
     message:
-        "Concatenating Hisat2 mapping report and generating .csv mapping summary."
-    params:
-        directory_with_mapping_reports = RESULT_DIR + "hisat2_aligned/",
-        star_directory_name = RESULT_DIR + "hisat2_aligned/"
+        "Normalising raw counts the DESeq2 way"
     shell:
-        "python scripts/generate_mapping_summary.py {params.directory_with_mapping_reports} {params.star_directory_name} {output}"
+        "Rscript --vanilla scripts/deseq2_normalization.R {input.raw} {output.norm}"
 '''

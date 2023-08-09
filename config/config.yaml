@@ -18,7 +18,9 @@ samples: data/raw_reads/SRR_metadata.csv
 
 # read quality trimming
 fastp:
-  qualified_quality_phred: 20 # Phred+33 score (> 15 for Proton Ion, > 30 or more for Illumina) 
+  cut_mean_quality: 20 # Phred+33 score (> 15 for Proton Ion, > 30 or more for Illumina)
+  window_size: 75
+  adapters: "config/NEBNext_Ultra_II_RNA_Library_Prep_Kit.fa"
 
 
 ######
