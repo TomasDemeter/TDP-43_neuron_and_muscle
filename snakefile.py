@@ -116,7 +116,7 @@ rule hisat2_index:
     message:
         "generating Hisat2 genome index"
     threads:
-        12
+        14
     params:
         dirs = config["refs"]["directories"]
     shell:
@@ -138,7 +138,7 @@ rule fastp:
         json = WORKING_DIR + "fastp/{SRR}_fastp.json"
     message:
         "trimming {wildcards.SRR} reads"
-    threads: 4
+    threads: 7
     log:
         log_file = WORKING_DIR + "fastp/{SRR}.log.txt"
     params:
@@ -166,24 +166,23 @@ rule fastp:
 #########################
 rule hisat2_samtools:
     input:
-        genome_index    = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9))
+        genome_index = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9))
     output:
         bam     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam",
-        log     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out",
-        summary = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Summary.txt"
+        log     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out"
     params:
-        hisat2_input_file_names = get_hisat2_names,
-        splice_sites            = config["refs"]["splice_sites"]
+        hisat2_input_file_names =  get_hisat2_names,
+        splice_sites = config["refs"]["splice_sites"]
     message:
         "Mapping {wildcards.SRR} reads to genome"
-    threads: 4
+    threads: 7
     shell:
         "hisat2 -x {config[refs][index]}/GRCm39_index "
         "{params.hisat2_input_file_names} "
         "2> {output.log} "
         "-p {threads} "
         "--known-splicesite-infile {params.splice_sites} "
-        "--new-summary --summary-file {output.summary} "
+        "--new-summary "
         "| samtools sort -o {output.bam}"
 
 
@@ -193,7 +192,7 @@ rule hisat2_samtools:
 rule multiqc:
     input:
         fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
-        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Summary.txt", SRR = SAMPLES)
+        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES)
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
@@ -222,7 +221,7 @@ rule featureCounts:
     message: "Producing the table of raw counts (counting read multimappers)"
     threads: 12
     shell:
-        "featureCounts -T{threads} -s 1 -t exon -g transcript_id -F 'GTF' -a {input.gtf} -o {output} {input.bams}"
+        "featureCounts -T {threads} -s 0 -t transcript -g transcript_id -F 'GTF' -a {input.gtf} -o {output} -p {input.bams}"
         
 '''     
 #####################################
