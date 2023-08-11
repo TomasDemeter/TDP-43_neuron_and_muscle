@@ -84,7 +84,7 @@ def get_hisat2_names(wildcards):
 #################
 BAM_FILES       = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MULTIQC         = RESULT_DIR + "multiqc_report.html"
-COUNTS          = RESULT_DIR + "featire_counts_table.tsv"
+COUNTS          = RESULT_DIR + "feature_counts_table.tsv"
 #RAW_COUNTS      = RESULT_DIR + "raw_counts.parsed.csv"
 #SCALED_COUNTS   = RESULT_DIR + "scaled_counts.csv"
 
@@ -192,21 +192,24 @@ rule hisat2_samtools:
 rule multiqc:
     input:
         fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
-        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES)
+        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES),
+        feature_counts  = RESULT_DIR + "feature_counts_table.tsv.summary"
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
         fastp_directory     = WORKING_DIR + "fastp/",
         hisat2_directory    = RESULT_DIR + "hisat2_aligned/",
         outdir              = RESULT_DIR
-    message: "Summarising fastp and hisat2 reports with multiqc"
+    message: "Summarising fastp, hisat2 and featureCounts reports with multiqc"
     shell:
         "multiqc --force "
         "--outdir {params.outdir} "
         "{params.fastp_directory} "
         "{params.hisat2_directory} "
+        "{input.feature_counts} "
         "--module fastp "
-        "--module hisat2"
+        "--module hisat2 "
+        "--module featureCounts"
         
 
 ##################################
@@ -217,11 +220,20 @@ rule featureCounts:
         bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES),
         gtf     = config["refs"]["gtf"]
     output:
-       RESULT_DIR + "featire_counts_table.tsv"
+       RESULT_DIR + "feature_counts_table.tsv"
     message: "Producing the table of raw counts (counting read multimappers)"
     threads: 12
     shell:
-        "featureCounts -T {threads} -s 0 -t transcript -g transcript_id -F 'GTF' -a {input.gtf} -o {output} -p {input.bams}"
+        "featureCounts -T {threads} "
+        "-M "
+        "-s 0 "
+        "-t exon "
+        "-g gene_id "
+        "--largestOverlap "
+        "-F 'GTF' "
+        "-a {input.gtf} "
+        "-o {output} "
+        "-p {input.bams}"
         
 '''     
 #####################################
