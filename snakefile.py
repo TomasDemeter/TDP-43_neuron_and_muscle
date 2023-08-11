@@ -82,12 +82,10 @@ def get_hisat2_names(wildcards):
 #################
 # Desired outputs
 #################
-BAM_FILES       = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
-MULTIQC         = RESULT_DIR + "multiqc_report.html"
-COUNTS          = RESULT_DIR + "feature_counts_table.tsv"
-#RAW_COUNTS      = RESULT_DIR + "raw_counts.parsed.csv"
-#SCALED_COUNTS   = RESULT_DIR + "scaled_counts.csv"
-
+BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
+MULTIQC     = RESULT_DIR + "multiqc_report.html"
+COUNTS      = RESULT_DIR + "feature_counts_table.tsv"
+DESEQ       = RESULT_DIR + "DESeq2_output.rds"
 
 ###########################
 # Pipeline
@@ -95,10 +93,9 @@ COUNTS          = RESULT_DIR + "feature_counts_table.tsv"
 rule all:
     input:
         BAM_FILES,
+        COUNTS,
         MULTIQC,
-        COUNTS
-#        RAW_COUNTS,
-#        SCALED_COUNTS
+        DESEQ
     message:
         "RNA-seq pipeline run complete!"
 
@@ -184,32 +181,6 @@ rule hisat2_samtools:
         "--known-splicesite-infile {params.splice_sites} "
         "--new-summary "
         "| samtools sort -o {output.bam}"
-
-
-#############################
-# Trimming and mapping report
-#############################
-rule multiqc:
-    input:
-        fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
-        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES),
-        feature_counts  = RESULT_DIR + "feature_counts_table.tsv.summary"
-    output:
-        RESULT_DIR + "multiqc_report.html"
-    params:
-        fastp_directory     = WORKING_DIR + "fastp/",
-        hisat2_directory    = RESULT_DIR + "hisat2_aligned/",
-        outdir              = RESULT_DIR
-    message: "Summarising fastp, hisat2 and featureCounts reports with multiqc"
-    shell:
-        "multiqc --force "
-        "--outdir {params.outdir} "
-        "{params.fastp_directory} "
-        "{params.hisat2_directory} "
-        "{input.feature_counts} "
-        "--module fastp "
-        "--module hisat2 "
-        "--module featureCounts"
         
 
 ##################################
@@ -220,48 +191,57 @@ rule featureCounts:
         bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES),
         gtf     = config["refs"]["gtf"]
     output:
-       RESULT_DIR + "feature_counts_table.tsv"
+        RESULT_DIR + "feature_counts_table.tsv",
     message: "Producing the table of raw counts (counting read multimappers)"
     threads: 12
     shell:
         "featureCounts -T {threads} "
-        "-M "
         "-s 0 "
         "-t exon "
         "-g gene_id "
-        "--largestOverlap "
         "-F 'GTF' "
         "-a {input.gtf} "
         "-o {output} "
         "-p {input.bams}"
-        
-'''     
-#####################################
-# Produce table of scaled gene counts
-#####################################
-rule parse_raw_counts:
+
+
+#################
+# MultiQC report
+#################
+rule multiqc:
     input:
-        WORKING_DIR + "raw_counts.csv"
+        fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
+        hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES),
+        feature_counts  = RESULT_DIR + "feature_counts_table.tsv"
     output:
-        RESULT_DIR + "raw_counts.parsed.csv"
-    message: 
-        "Parsing the raw counts file for scaling (removal of comment and header renaming)"
+        RESULT_DIR + "multiqc_report.html"
     params:
-        hisat2_result_dir_name = RESULT_DIR + "hisat2_aligned/"
+        fastp_directory         = WORKING_DIR + "fastp/",
+        hisat2_directory        = RESULT_DIR + "hisat2_aligned/",
+        feature_counts_input    = RESULT_DIR + "feature_counts_table.tsv.summary",
+        outdir                  = RESULT_DIR
+    message: "Summarising fastp, hisat2 and featureCounts reports with multiqc"
     shell:
-        "Rscript --vanilla scripts/parse_raw_counts.R {input} {params.star_result_dir_name} {output}"
-        
+        "multiqc --force "
+        "--outdir {params.outdir} "
+        "{params.fastp_directory} "
+        "{params.hisat2_directory} "
+        "{params.feature_counts_input} "
+        "--module fastp "
+        "--module hisat2 "
+        "--module featureCounts"   
+
 
 #########################################
 # Produce table of normalised gene counts
 #########################################
-rule normalise_raw_counts:
+rule DESeq2:
     input:
-        raw = RESULT_DIR + "raw_counts.parsed.csv"
+        raw       = RESULT_DIR + "feature_counts_table.tsv",
+        metadata  = config["samples"]
     output:
-        norm = RESULT_DIR + "scaled_counts.csv"
+        norm = RESULT_DIR + "DESeq2_output.rds"
     message:
-        "Normalising raw counts the DESeq2 way"
+        "Running DESeq2"
     shell:
-        "Rscript --vanilla scripts/deseq2_normalization.R {input.raw} {output.norm}"
-'''
+        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.norm}"
