@@ -1,9 +1,11 @@
 library(DESeq2)
 library(tidyverse)
+library(pheatmap)
+
 
 args <- commandArgs(trailingOnly = TRUE)
-raw_counts_filepath <- args[1]
-meta_data_filepath <- args[2]
+raw_counts_filepath <- "results/feature_counts_table.tsv" #args[1]
+meta_data_filepath <- "data/raw_reads/SRR_metadata.csv" #args[2]
 DESeq2_output <- args[3]
 
 # load featureCounts output
@@ -46,13 +48,31 @@ all(colnames(raw_counts) == rownames(meta_data))
 dds <- DESeqDataSetFromMatrix(countData = raw_counts, colData = meta_data, design = ~ treatment)
 
 # keep only row that have more than 10 reads across all samples
-dds <- dds[rowSums(counts(dds)) >= 10, ]
+dds <- dds[rowSums(counts(dds)) >= 1, ]
 
 # specify factor level (what is treated and what is control)
 dds$treatment <- relevel(dds$treatment, ref = "siRNA Control (Luciferase)")
 
 # run DESeq2
 dds <- DESeq(dds)
+
+# Perform multiple testing adjustment using Benjamini and Hochberg's approach
+res <- results(dds, alpha = 0.05, pAdjustMethod = "BH")
+
+# Extract differentially expressed genes (padj < 0.05)
+degs <- subset(res, padj < 0.05)
+
+# Hierarchically cluster the differentially expressed genes based on log10(FPKM + 1)
+vsd <- vst(dds)
+mat <- assay(vsd)[rownames(degs),]
+mat <- mat - rowMeans(mat)
+pheatmap(log10(mat + 1))
+
+# Illustrate distance between silenced and control samples of each cell line with PCA
+plotPCA(vsd, intgroup = c("treatment"))
+
+# Test for significance in gene expression levels between cell lines using Wilcoxon signed-rank test
+wilcox.test(log10(mat + 1))
 
 # save the output
 saveRDS(dds, file = DESeq2_output)
