@@ -1,13 +1,10 @@
 library(DESeq2)
 library(tidyverse)
 library(pheatmap)
-library(GenomicRanges)
-library(rtracklayer)
 
 #args <- commandArgs(trailingOnly = TRUE)
 raw_counts_filepath <- "results/feature_counts_table.tsv" #args[1]
 meta_data_filepath <- "data/raw_reads/SRR_metadata.csv" #args[2]
-gtf_filepath <- "config/refs/Mus_musculus.GRCm39.110.gtf"
 #DESeq2_output <- args[3]
 
 # load featureCounts output, metadata adn gtf file
@@ -34,27 +31,12 @@ meta_data <- meta_data[,c("cell.type", "treatment")]
 meta_data$cell.type <- as.factor(meta_data$cell.type)
 meta_data$treatment <- as.factor(meta_data$treatment)
 
-# creating genomic ranges object
-
-gr <- import(gtf_filepath)
-
 #create DESeq2 object
 
 dds <- DESeqDataSetFromMatrix(countData = raw_counts,
                               colData = meta_data,
                               design = ~ treatment)
 
-
-gr_2 <- makeGRangesFromGTF(
-  gtf_filepath,
-  level = c("genes", "transcripts"),
-  ignoreVersion = TRUE,
-  extraMcols = TRUE
-)
-
-mcols(dds)
-
-rowRanges(dds) <- gr
 
 # keep only row that have more than 10 reads across all samples
 dds <- dds[rowSums(counts(dds)) >= 1, ]
@@ -71,24 +53,21 @@ res <- results(dds, alpha = 0.05, pAdjustMethod = "BH")
 # Extract differentially expressed genes (padj < 0.05)
 degs <- subset(res, padj < 0.05)
 
+
+
+plotDispEsts(dds) ## need to investigate the samples. dispersion is not good
+
+
 # Hierarchically cluster the differentially expressed genes based on log10(FPKM + 1)
-vsd <- vst(dds)
+
+vsd <- vst(dds, blind = FALSE)
 mat <- assay(vsd)[rownames(degs),]
 mat <- mat - rowMeans(mat)
 pheatmap(log10(mat + 1))
 
+
 # Illustrate distance between silenced and control samples of each cell line with PCA
 plotPCA(vsd, intgroup = c("treatment", "cell.type"))
-
-
-
-
-
-
-
-
-fpkm_values <- fpkm(dds)
-
 
 
 # Test for significance in gene expression levels between cell lines using Wilcoxon signed-rank test
@@ -96,3 +75,5 @@ wilcox.test(log10(mat + 1))
 
 # save the output
 saveRDS(dds, file = DESeq2_output)
+
+mat
