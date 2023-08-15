@@ -75,5 +75,3 @@ wilcox.test(log10(mat + 1))
 
 # save the output
 saveRDS(dds, file = DESeq2_output)
-
-mat
