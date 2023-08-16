@@ -70,8 +70,6 @@ pheatmap(log10(mat + 1))
 plotPCA(vsd, intgroup = c("treatment", "cell.type"))
 
 
-# Test for significance in gene expression levels between cell lines using Wilcoxon signed-rank test
-wilcox.test(log10(mat + 1))
 
 # save the output
 saveRDS(dds, file = DESeq2_output)
