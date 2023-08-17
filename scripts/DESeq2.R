@@ -39,7 +39,7 @@ dds <- DESeqDataSetFromMatrix(countData = raw_counts,
 
 
 # keep only row that have more than 10 reads across all samples
-dds <- dds[rowSums(counts(dds)) >= 1, ]
+dds <- dds[which(rowSums(counts) >= 500),]
 
 # specify factor level (what is treated and what is control)
 dds$treatment <- relevel(dds$treatment, ref = "siRNA Control (Luciferase)")
@@ -63,7 +63,7 @@ plotDispEsts(dds) ## need to investigate the samples. dispersion is not good
 vsd <- vst(dds, blind = FALSE)
 mat <- assay(vsd)[rownames(degs),]
 mat <- mat - rowMeans(mat)
-pheatmap(log10(mat + 1))
+#pheatmap(log10(mat + 1))
 
 
 # Illustrate distance between silenced and control samples of each cell line with PCA
