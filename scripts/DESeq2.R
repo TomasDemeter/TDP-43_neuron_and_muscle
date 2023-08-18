@@ -1,6 +1,45 @@
 library(DESeq2)
 library(tidyverse)
 library(pheatmap)
+library(ggplot2)
+
+
+#################################
+# Nature-like theme for ggplot2 #
+#################################
+
+nature_theme <- function(
+  base_size = 12,
+  base_family = "",
+  color_palette = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) {
+  theme_classic(base_size = base_size, base_family = base_family) +
+    theme(
+      # Set the background color to white
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      
+      # Set the size and color of the axis lines and ticks
+      axis.line = element_line(size = 1, color = "black"),
+      axis.ticks = element_line(size = 1, color = "black"),
+      
+      # Set the font size and color of the axis text and title
+      axis.text = element_text(size = rel(1.5), color = "#5c5a5a"),
+      axis.title = element_text(size = rel(1.5), color = "black"),
+      
+      # Set the font size and color of the legend title and text
+      legend.text = element_text(size = rel(1.2), color = "black"),
+
+      axis.text.x = element_text(angle = 45, hjust = 1),
+
+      # Remove the legend title
+      legend.title = element_blank()
+    )
+}
+
+
+####################
+# Loading the data #
+####################
 
 #args <- commandArgs(trailingOnly = TRUE)
 raw_counts_filepath <- "results/feature_counts_table.tsv" #args[1]
@@ -11,6 +50,13 @@ meta_data_filepath <- "data/raw_reads/SRR_metadata.csv" #args[2]
 raw_counts <- read.csv(raw_counts_filepath, skip = 1, sep = "\t", row.names="Geneid")
 meta_data <- read.csv(meta_data_filepath, row.names="SRR")
 
+
+######################################
+# Preparing data for FPKM and DESeq2 #
+######################################
+
+# save gene length info for later fpmk calculcations
+gene_length <- raw_counts["Length"]
 
 # Drop the columns 'Chr', 'Start', 'End', 'Strand', and 'Length'
 raw_counts <- raw_counts[, !(colnames(raw_counts) %in% c('Chr', 'Start', 'End', 'Strand', 'Length'))]
@@ -31,15 +77,96 @@ meta_data <- meta_data[,c("cell.type", "treatment")]
 meta_data$cell.type <- as.factor(meta_data$cell.type)
 meta_data$treatment <- as.factor(meta_data$treatment)
 
-#create DESeq2 object
 
+#################
+# DESeq2 analysis
+#################
+
+#create DESeq2 object
 dds <- DESeqDataSetFromMatrix(countData = raw_counts,
                               colData = meta_data,
-                              design = ~ treatment)
+                              design = ~ cell.type + treatment)
 
 
+# add gene_length info to dds object
+mcols(dds)$basepairs <- gene_length$Length
+
+# calculate fpkm
+fpkm_values <- fpkm(dds)
+
+# Perform PCA on the FPKM values
+pca_res <- prcomp(t(fpkm_values))
+
+# Create a data frame with the PCA results and sample information
+pca_df <- data.frame(PC1 = pca_res$x[,1], PC2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+
+# Create a new variable that combines treatment and cell type
+pca_df$group <- interaction(pca_df$treatment, pca_df$cell.type)
+
+# Generate the PCA plot
+pca_plot <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
+  geom_point(size = 5) +
+  xlab(paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100), "%)")) +
+  ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) + 
+  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
+  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
+  nature_theme()
+
+print(pca_plot)
+
+
+# Extract the FPKM values for the gene of interest
+gene_fpkm <- fpkm_values["ENSMUSG00000041459",]
+
+# Create a data frame with the FPKM values, PCA2 scores, and sample information
+fpkm_pca_df <- data.frame(fpkm = gene_fpkm, pca2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+
+# Create a new variable that combines treatment and cell type
+fpkm_pca_df$group <- interaction(fpkm_pca_df$treatment, fpkm_pca_df$cell.type)
+
+# Generate the scatter plot with four colors
+fpkm_pca_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group)) +
+  geom_point(size = 5) +
+  xlab("Tardbp FPKM") +
+  ylab("PCA2") +
+  ggtitle("") + 
+  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
+  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
+  nature_theme()
+
+# Display the scatter plot
+print(fpkm_pca_plot)
+
+#____________________
+
+log_gene_fpkm <- log10(gene_fpkm + 1)
+
+# Create a data frame with the log10(FPKM + 1) values and sample information
+log_fpkm_df <- data.frame(sample = colnames(fpkm_values), log_fpkm = log_gene_fpkm, treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+
+# Create a new variable that combines treatment and cell type
+log_fpkm_df$group <- interaction(log_fpkm_df$treatment, log_fpkm_df$cell.type)
+
+# Generate the scatter plot
+log_fpkm_plot <- ggplot(log_fpkm_df, aes(x = group, y = log_fpkm, color = group)) +
+  geom_point(size = 5) +
+  ggtitle("") +
+  ylab("log10(FPKM + 1)") +
+  xlab("") +
+  scale_y_continuous(limits = c(0, NA)) +
+  scale_x_discrete(labels = c("siLUC", "siTDP", "siLUC", "siTDP")) +
+  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
+  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
+  nature_theme()
+
+print(log_fpkm_plot)
+
+
+
+#____________________
 # keep only row that have more than 10 reads across all samples
-dds <- dds[which(rowSums(counts) >= 500),]
+dds <- dds[which(rowSums(counts(dds)) >= 1),]
+
 
 # specify factor level (what is treated and what is control)
 dds$treatment <- relevel(dds$treatment, ref = "siRNA Control (Luciferase)")
@@ -67,8 +194,12 @@ mat <- mat - rowMeans(mat)
 
 
 # Illustrate distance between silenced and control samples of each cell line with PCA
-plotPCA(vsd, intgroup = c("treatment", "cell.type"))
-
+# generate the PCA plot
+pca_plot <- plotPCA(vsd, intgroup = c("treatment", "cell.type"))
+# adjust the y-axis limits
+pca_plot <- pca_plot + coord_cartesian(ylim = c(-4, 4))
+# display the plot
+print(pca_plot)
 
 
 # save the output
