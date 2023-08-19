@@ -91,6 +91,9 @@ dds <- DESeqDataSetFromMatrix(countData = raw_counts,
 # add gene_length info to dds object
 mcols(dds)$basepairs <- gene_length$Length
 
+dds <- dds[which(rowSums(counts(dds)) >= 1),]
+
+
 # calculate fpkm
 fpkm_values <- fpkm(dds)
 
@@ -104,7 +107,7 @@ pca_df <- data.frame(PC1 = pca_res$x[,1], PC2 = pca_res$x[,2], treatment = colDa
 pca_df$group <- interaction(pca_df$treatment, pca_df$cell.type)
 
 # Generate the PCA plot
-pca_plot <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
+pca_plot_fpkm <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
   geom_point(size = 5) +
   xlab(paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100), "%)")) +
   ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) + 
@@ -112,9 +115,11 @@ pca_plot <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
   labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
   nature_theme()
 
-print(pca_plot)
+print(pca_plot_fpkm)
 
 
+
+#____________________________________________________
 # Extract the FPKM values for the gene of interest
 gene_fpkm <- fpkm_values["ENSMUSG00000041459",]
 
@@ -123,21 +128,6 @@ fpkm_pca_df <- data.frame(fpkm = gene_fpkm, pca2 = pca_res$x[,2], treatment = co
 
 # Create a new variable that combines treatment and cell type
 fpkm_pca_df$group <- interaction(fpkm_pca_df$treatment, fpkm_pca_df$cell.type)
-
-# Generate the scatter plot with four colors
-fpkm_pca_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group)) +
-  geom_point(size = 5) +
-  xlab("Tardbp FPKM") +
-  ylab("PCA2") +
-  ggtitle("") + 
-  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
-  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
-  nature_theme()
-
-# Display the scatter plot
-print(fpkm_pca_plot)
-
-#____________________
 
 log_gene_fpkm <- log10(gene_fpkm + 1)
 
@@ -164,9 +154,6 @@ print(log_fpkm_plot)
 
 
 #____________________
-# keep only row that have more than 10 reads across all samples
-dds <- dds[which(rowSums(counts(dds)) >= 1),]
-
 
 # specify factor level (what is treated and what is control)
 dds$treatment <- relevel(dds$treatment, ref = "siRNA Control (Luciferase)")
@@ -181,21 +168,36 @@ res <- results(dds, alpha = 0.05, pAdjustMethod = "BH")
 degs <- subset(res, padj < 0.05)
 
 
-
-plotDispEsts(dds) ## need to investigate the samples. dispersion is not good
+# plot gene expression dispersion
+plotDispEsts(dds)
 
 
 # Hierarchically cluster the differentially expressed genes based on log10(FPKM + 1)
 
 vsd <- vst(dds, blind = FALSE)
-mat <- assay(vsd)[rownames(degs),]
-mat <- mat - rowMeans(mat)
+#mat <- assay(vsd)[rownames(degs),]
+#mat <- mat - rowMeans(mat)
 #pheatmap(log10(mat + 1))
 
 
 # Illustrate distance between silenced and control samples of each cell line with PCA
 # generate the PCA plot
-pca_plot <- plotPCA(vsd, intgroup = c("treatment", "cell.type"))
+
+
+# the NSC34 groups might be switched here!!!!
+pca_plot <- plotPCA(vsd, intgroup = c("treatment", "cell.type")) +
+  geom_point(size = 5) +
+  xlab(paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100), "%)")) +
+  ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) +
+  coord_cartesian(ylim = c(-4, 4))# +
+  #scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"), labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
+  # nature_theme()
+
+print(pca_plot)
+
+
+#____________
+
 # adjust the y-axis limits
 pca_plot <- pca_plot + coord_cartesian(ylim = c(-4, 4))
 # display the plot
