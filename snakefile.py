@@ -140,20 +140,18 @@ rule fastp:
         log_file = WORKING_DIR + "fastp/{SRR}.log.txt"
     params:
         in_and_out_files    = get_trim_names,
-        window_size         = config["fastp"]["window_size"],
-        cut_mean_quality    = config["fastp"]["cut_mean_quality"],
-        adapters            = config["fastp"]["adapters"]          
+        phread_quality      = config["fastp"]["phread_quality"],
+        base_limit          = config["fastp"]["base_limit"],
+        percent_limit       = config["fastp"]["percent_limit"]
     shell:
         "mkdir -p {WORKING_DIR}fastp; "
         "mkdir -p {WORKING_DIR}trimmed; "
         "fastp --thread {threads} "
-        "--cut_window_size {params.window_size} "
-        "--cut_mean_quality {params.cut_mean_quality} "
-        "--adapter_fasta {params.adapters} "
+        "--qualified_quality_phred {params.phread_quality} "
+        "--unqualified_percent_limit {params.percent_limit} "
+        "--n_base_limit {params.base_limit} "
         "--html {output.html} "
         "--json {output.json} "
-        "--cut_tail "
-        "--cut_front "
         "{params.in_and_out_files} "
         "2>{log.log_file}"
         
