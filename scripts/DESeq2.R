@@ -103,7 +103,8 @@ dds <- dds[which(rowSums(counts(dds)) >= 1),]
 fpkm_values <- fpkm(dds)
 
 # Perform PCA on the FPKM values
-pca_res <- prcomp(t(fpkm_values))
+pca_res <- prcomp(t(fpkm_values), scale = TRUE)
+pca_res$PC2 <- -pca_res$PC2
 
 #################################################################
 #Expression levels of Tardbp in TDP-43-silenced C2C12 and NSC34 #
@@ -120,8 +121,7 @@ log_gene_fpkm <- log10(gene_fpkm + 1)
 log_fpkm_df <- data.frame(sample = colnames(fpkm_values), log_fpkm = log_gene_fpkm, treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
 
 # Create a new variable that combines treatment and cell type
-log_fpkm_df$group <- interaction(log_fpkm_df$treatment, log_fpkm_df$cell.type)
-
+log_fpkm_df$group <- paste(log_fpkm_df$cell.type, log_fpkm_df$treatment, sep = " ")
 # Generate the scatter plot
 log_fpkm_plot <- ggplot(log_fpkm_df, aes(x = group, y = log_fpkm, color = group)) +
   geom_point(size = 5) +
@@ -141,9 +141,9 @@ print(log_fpkm_plot)
 
 # Create a data frame with the PCA results and sample information
 pca_df <- data.frame(PC1 = pca_res$x[,1], PC2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+
 # Create a new variable that combines treatment and cell type
-pca_df$group <- interaction(pca_df$cell.type, pca_df$treatment)
-pca_df$group <- factor(pca_df$group, levels = c("C2C12.siLUC", "C2C12.siTDP", "NSC34.siLUC", "NSC34.siTDP"))
+pca_df$group <- paste(pca_df$cell.type, pca_df$treatment, sep = " ")
 
 # Generate the PCA plot
 pca_plot_fpkm <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
@@ -163,8 +163,7 @@ print(pca_plot_fpkm)
 ###############################
 
 # Create a new variable that combines treatment and cell type
-fpkm_pca_df$group <- interaction(fpkm_pca_df$cell.type, fpkm_pca_df$treatment)
-fpkm_pca_df$group <- factor(fpkm_pca_df$group, levels = c("C2C12.siLUC", "C2C12.siTDP", "NSC34.siLUC", "NSC34.siTDP"))
+fpkm_pca_df$group <- paste(fpkm_pca_df$cell.type, fpkm_pca_df$treatment, sep = " ")
 
 log_fpkm_tdp_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group)) +
   geom_point(size = 5) +
@@ -172,7 +171,7 @@ log_fpkm_tdp_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group))
   ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) +
   xlab("Tardbp FPKM") +
   scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) +
-  geom_text(aes(label = rownames(fpkm_pca_df)), nudge_x = 2, nudge_y = 25, size = 5) +
+  geom_text(aes(label = rownames(fpkm_pca_df)), nudge_x = -5, nudge_y = 25, size = 5) +
   nature_theme()
 
 print(log_fpkm_tdp_plot)
