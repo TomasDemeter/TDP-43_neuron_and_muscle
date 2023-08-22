@@ -73,12 +73,12 @@ colnames(raw_counts) <- sapply(colnames(raw_counts), function(x) {
 })
 
 # rename values in treatment and keep only relevant columns from metadata and set them as factors
-meta_data$treatment <- ifelse(grepl("Control", meta_data$treatment, ignore.case = TRUE), "control", 
-                       ifelse(grepl("TDP", meta_data$treatment, ignore.case = TRUE), "TDP", meta_data$treatment))
+meta_data$treatment <- ifelse(grepl("Control", meta_data$treatment, ignore.case = TRUE), "siLUC", 
+                       ifelse(grepl("TDP", meta_data$treatment, ignore.case = TRUE), "siTDP", meta_data$treatment))
 
-meta_data <- meta_data[,c("cell.type", "treatment")]
-meta_data$cell.type <- as.factor(meta_data$cell.type)
-meta_data$treatment <- as.factor(meta_data$treatment)
+sample_data <- meta_data[,c("cell.type", "treatment")]
+sample_data$cell.type <- as.factor(sample_data$cell.type)
+sample_data$treatment <- as.factor(sample_data$treatment)
 
 
 #################
@@ -87,11 +87,11 @@ meta_data$treatment <- as.factor(meta_data$treatment)
 
 # create DESeq2 object
 dds <- DESeqDataSetFromMatrix(countData = raw_counts,
-                              colData = meta_data,
-                              design = ~ treatment)
+                              colData = sample_data,
+                              design = ~ cell.type + treatment)
 
 # specify factor level (what is treated and what is control)
-dds$treatment <- relevel(dds$treatment, ref = "control")
+dds$treatment <- relevel(dds$treatment, ref = "siLUC")
 
 # add gene_length info to dds object
 mcols(dds)$basepairs <- gene_length$Length
@@ -104,25 +104,6 @@ fpkm_values <- fpkm(dds)
 
 # Perform PCA on the FPKM values
 pca_res <- prcomp(t(fpkm_values))
-
-
-# Create a data frame with the PCA results and sample information
-pca_df <- data.frame(PC1 = pca_res$x[,1], PC2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
-
-# Create a new variable that combines treatment and cell type
-pca_df$group <- interaction(pca_df$treatment, pca_df$cell.type)
-
-# Generate the PCA plot
-pca_plot_fpkm <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
-  geom_point(size = 5) +
-  xlab(paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100), "%)")) +
-  ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) + 
-  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
-  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
-  nature_theme()
-
-print(pca_plot_fpkm)
-
 
 #################################################################
 #Expression levels of Tardbp in TDP-43-silenced C2C12 and NSC34 #
@@ -148,12 +129,33 @@ log_fpkm_plot <- ggplot(log_fpkm_df, aes(x = group, y = log_fpkm, color = group)
   ylab("log10(FPKM + 1)") +
   xlab("") +
   scale_y_continuous(limits = c(0, NA)) +
-  scale_x_discrete(labels = c("siLUC", "siTDP", "siLUC", "siTDP")) +
-  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
-  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
+  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) +
   nature_theme()
 
 print(log_fpkm_plot)
+
+
+############
+# PCA plot #
+############
+
+# Create a data frame with the PCA results and sample information
+pca_df <- data.frame(PC1 = pca_res$x[,1], PC2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+# Create a new variable that combines treatment and cell type
+pca_df$group <- interaction(pca_df$cell.type, pca_df$treatment)
+pca_df$group <- factor(pca_df$group, levels = c("C2C12.siLUC", "C2C12.siTDP", "NSC34.siLUC", "NSC34.siTDP"))
+
+# Generate the PCA plot
+pca_plot_fpkm <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
+  geom_point(size = 5) +
+  xlab(paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100), "%)")) +
+  ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) + 
+  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) +
+  geom_text(aes(label = rownames(pca_df)), nudge_x = 2, nudge_y = 25, size = 5) +
+  nature_theme()
+
+print(pca_plot_fpkm)
+
 
 
 ###############################
@@ -161,17 +163,18 @@ print(log_fpkm_plot)
 ###############################
 
 # Create a new variable that combines treatment and cell type
-fpkm_pca_df$group <- interaction(fpkm_pca_df$treatment, fpkm_pca_df$cell.type)
+fpkm_pca_df$group <- interaction(fpkm_pca_df$cell.type, fpkm_pca_df$treatment)
+fpkm_pca_df$group <- factor(fpkm_pca_df$group, levels = c("C2C12.siLUC", "C2C12.siTDP", "NSC34.siLUC", "NSC34.siTDP"))
 
 log_fpkm_tdp_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group)) +
   geom_point(size = 5) +
   ggtitle("") +
   ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) +
   xlab("Tardbp FPKM") +
-  scale_x_discrete(labels = c("siLUC", "siTDP", "siLUC", "siTDP")) +
-  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc"),
-  labels = c("C2C12 siLUC", "C2C12 siTDP", "NSC34 siLUC", "NSC34 siTDP")) +
+  scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) +
+  geom_text(aes(label = rownames(fpkm_pca_df)), nudge_x = 2, nudge_y = 25, size = 5) +
   nature_theme()
 
 print(log_fpkm_tdp_plot)
+
 

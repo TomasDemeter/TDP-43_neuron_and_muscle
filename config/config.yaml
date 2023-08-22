@@ -20,7 +20,7 @@ samples: data/raw_reads/SRR_metadata.csv
 fastp:
   phread_quality: 20 # Phred+33 score (> 15 for Proton Ion, > 30 or more for Illumina)
   percent_limit: 50
-  base_limit: 0.1
+  base_limit: 1
 
 
 ######

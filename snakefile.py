@@ -95,7 +95,7 @@ rule all:
         BAM_FILES,
         COUNTS,
         MULTIQC,
-        DESEQ
+       # DESEQ
     message:
         "RNA-seq pipeline run complete!"
 
@@ -161,7 +161,8 @@ rule fastp:
 #########################
 rule hisat2_samtools:
     input:
-        genome_index = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9))
+        genome_index    = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9)),
+        fastp_json      = WORKING_DIR + "fastp/{SRR}_fastp.json"
     output:
         bam     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam",
         log     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out"
@@ -179,7 +180,6 @@ rule hisat2_samtools:
         "--known-splicesite-infile {params.splice_sites} "
         "--new-summary "
         "| samtools sort -o {output.bam}"
-        
 
 ##################################
 # Produce table of raw gene counts
@@ -243,3 +243,5 @@ rule DESeq2:
         "Running DESeq2"
     shell:
         "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.norm}"
+        
+        
