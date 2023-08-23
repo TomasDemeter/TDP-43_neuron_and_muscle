@@ -104,7 +104,6 @@ fpkm_values <- fpkm(dds)
 
 # Perform PCA on the FPKM values
 pca_res <- prcomp(t(fpkm_values), scale = TRUE)
-pca_res$PC2 <- -pca_res$PC2
 
 #################################################################
 #Expression levels of Tardbp in TDP-43-silenced C2C12 and NSC34 #
@@ -112,9 +111,6 @@ pca_res$PC2 <- -pca_res$PC2
 
 # Extract the FPKM values for the gene of interest (mouse TDP-43)
 gene_fpkm <- fpkm_values["ENSMUSG00000041459",]
-
-# Create a data frame with the FPKM values, PCA2 scores, and sample information
-fpkm_pca_df <- data.frame(fpkm = gene_fpkm, pca2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
 
 # Create a data frame with the log10(FPKM + 1) values and sample information
 log_gene_fpkm <- log10(gene_fpkm + 1)
@@ -141,6 +137,7 @@ print(log_fpkm_plot)
 
 # Create a data frame with the PCA results and sample information
 pca_df <- data.frame(PC1 = pca_res$x[,1], PC2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+pca_df$PC2 <- -pca_df$PC2
 
 # Create a new variable that combines treatment and cell type
 pca_df$group <- paste(pca_df$cell.type, pca_df$treatment, sep = " ")
@@ -151,7 +148,7 @@ pca_plot_fpkm <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
   xlab(paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100), "%)")) +
   ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) + 
   scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) +
-  geom_text(aes(label = rownames(pca_df)), nudge_x = 2, nudge_y = 25, size = 5) +
+  geom_text(aes(label = rownames(pca_df)), nudge_x = -5, nudge_y = 2, size = 5) +
   nature_theme()
 
 print(pca_plot_fpkm)
@@ -162,6 +159,10 @@ print(pca_plot_fpkm)
 # visualise PCA2 and TDP FPKM #
 ###############################
 
+# Create a data frame with the FPKM values, PCA2 scores, and sample information
+fpkm_pca_df <- data.frame(fpkm = gene_fpkm, pca2 = pca_res$x[,2], treatment = colData(dds)$treatment, cell.type = colData(dds)$cell.type)
+fpkm_pca_df$pca2 <- -fpkm_pca_df$pca2
+
 # Create a new variable that combines treatment and cell type
 fpkm_pca_df$group <- paste(fpkm_pca_df$cell.type, fpkm_pca_df$treatment, sep = " ")
 
@@ -171,9 +172,134 @@ log_fpkm_tdp_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group))
   ylab(paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100), "%)")) +
   xlab("Tardbp FPKM") +
   scale_color_manual(values = c("#8a3838", "#f07f7e", "#51848a", "#99c0cc")) +
-  geom_text(aes(label = rownames(fpkm_pca_df)), nudge_x = -5, nudge_y = 25, size = 5) +
+  geom_text(aes(label = rownames(fpkm_pca_df)), nudge_x = -5, nudge_y = 2, size = 5) +
   nature_theme()
 
 print(log_fpkm_tdp_plot)
 
 
+
+
+dds2 <- DESeq(dds)
+
+muscle_dds <- dds2[dds2$cell.type == 'C2C12', ]
+muscle_res <- results(muscle_dds, contrast = c("treatment", "siTDP", "siLUC"))
+muscle_res_sig <- subset(muscle_res, padj < 0.05)
+nrow(muscle_res_sig)
+
+
+# Repeat the same steps for the NSC34 cell type
+neuronal_dds <- dds2[dds2$cell.type == 'NSC34', ]
+neuronal_res <- results(neuronal_dds, contrast = c("treatment", "siTDP", "siLUC"))
+neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
+nrow(neuronal_res_sig)
+
+overlap <- intersect(rownames(muscle_res_sig), rownames(neuronal_res_sig))
+overlap
+
+
+
+library(ggVennDiagram)
+
+
+
+deg_venn <- ggVennDiagram(transcript_sets)
+print(deg_venn)
+
+
+dds2
+colData(dds2)
+rowData(dds2)
+
+
+
+
+
+
+raw_counts2 <- read.csv(raw_counts_filepath, skip = 1, sep = "\t", row.names="Geneid")
+# Rename the remaining columns to keep only the part of the column name starting with 'SRR' (included) and ending with '_fastp_' (excluded)
+colnames(raw_counts2) <- sapply(colnames(raw_counts2), function(x) {
+  start_index <- regexpr('SRR', x)
+  end_index <- regexpr('_fastp_', x)
+  if (start_index != -1 & end_index != -1) {
+    substr(x, start_index, end_index - 1)
+  } else {
+    x
+  }
+})
+
+
+
+raw_counts2 <- raw_counts2[, !(colnames(raw_counts2) %in% c('Chr', 'Start', 'End', 'Strand', 'Length'))]
+
+neuronal_samples <- c('SRR14183636', 'SRR14183637', 'SRR14183638', 'SRR14183639', 'SRR14183640', 'SRR14183641')
+muscle_samples <- c('SRR14183636', 'SRR14183637', 'SRR14183638', 'SRR14183639', 'SRR14183640', 'SRR14183641')
+
+raw_counts_neuronal<- raw_counts2[, (colnames(raw_counts2) %in% neuronal_samples)]
+raw_counts_muscle <- raw_counts2[, (colnames(raw_counts2) %in% muscle_samples)]
+
+sample_data_neuronal <- meta_data[rownames(meta_data) %in% neuronal_samples, ]
+sample_data_muscle <- meta_data[(rownames(meta_data) %in% muscle_samples), ]
+
+
+dds_neuronal <- DESeqDataSetFromMatrix(countData = raw_counts_neuronal,
+                                      colData = sample_data_neuronal,
+                                      design = ~ treatment)
+
+
+dds_muscle <- DESeqDataSetFromMatrix(countData = raw_counts_muscle,
+                                      colData = sample_data_muscle,
+                                      design = ~ treatment)
+
+
+mcols(dds_neuronal)$basepairs <- gene_length$Length
+mcols(dds_muscle)$basepairs <- gene_length$Length
+
+dds_neuronal <- dds_neuronal[which(rowSums(counts(dds_neuronal)) >= 1),]
+dds_muscle <- dds_muscle[which(rowSums(counts(dds_muscle)) >= 1),]
+
+
+fpmk_muscle <- fpkm(dds_muscle)
+fpmk_neuronal <- fpkm(dds_neuronal)
+
+fpmk_muscle <- fpmk_muscle[fpmk_muscle > 0.5, ]
+fpmk_neuronal <- fpmk_neuronal[fpmk_neuronal > 0.5, ]
+
+
+
+head(fpmk_muscle)
+
+
+
+
+
+
+
+
+
+
+
+dds_neuronal <- DESeq(dds_neuronal)
+dds_muscle <- DESeq(dds_muscle)
+
+
+neuronal_res <- results(neuronal_dds, contrast = c("treatment", "siTDP", "siLUC"))
+neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
+nrow(neuronal_res_sig)
+
+
+muscle_res <- results(muscle_dds, contrast = c("treatment", "siTDP", "siLUC"))
+muscle_res_sig <- subset(muscle_res, padj < 0.05)
+nrow(muscle_res_sig)
+
+
+overlap <- intersect(rownames(raw_counts_neuronal), rownames(raw_counts_muscle))
+length(raw_counts_muscle)
+head(sort(rownames(raw_counts_muscle)),10)
+head(sort(rownames(raw_counts_muscle)),10)
+
+
+dim(fpmk_muscle)
+
+rownames(neuronal_res)
+rownames(muscle_res)
