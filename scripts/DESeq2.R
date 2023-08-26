@@ -91,6 +91,7 @@ dds <- DESeqDataSetFromMatrix(countData = raw_counts,
                               colData = sample_data,
                               design = ~ cell.type + treatment)
 
+
 # specify factor level (what is treated and what is control)
 dds$treatment <- relevel(dds$treatment, ref = "siLUC")
 
@@ -177,25 +178,143 @@ log_fpkm_tdp_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group))
 print(log_fpkm_tdp_plot)
 
 
-
+# subset dds object
 dds_neuron <- dds[ , dds$cell.type == "NSC34"]
 dds_muscle <- dds[ , dds$cell.type == "C2C12"]
+
+# remove cell.type from experimental design
 dds_neuron@design <- ~ treatment
 dds_muscle@design <- ~ treatment
+
+# run DESeq2
 dds_neuron <- DESeq(dds_neuron)
 dds_muscle <- DESeq(dds_muscle)
-neuronal_res <- results(dds_neuron, contrast = c("treatment", "siTDP", "siLUC"))
-muscle_res <- results(dds_muscle, contrast = c("treatment", "siTDP", "siLUC"))
+
+# saving the results
+neuronal_res <- results(dds_neuron, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
+muscle_res <- results(dds_muscle, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
+
+# filtering out genes with insignificat expression change 
 neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
 muscle_res_sig <- subset(muscle_res, padj < 0.05)
 
 
-transcript_sets <- list(rownames(neuronal_res_sig), rownames(muscle_res_sig))
+################################
+# plotting venn diagram of DEG #
+################################
+
+# create a list of two sets of genes
+transcript_sets <- list(rownames(muscle_res_sig), rownames(neuronal_res_sig))
+
+# create a Venn diagram object using ggvenn
+venn <- Venn(transcript_sets)
+
+# process the data for plotting using ggvenn
+data <- process_data(venn)
+
+# define new set names and plot title
+new_set_names <- c("C2C12", "NSC34")
+plot_title <- "DEG"
+
+# create a new data frame for set labels with the new set names
+setlabel_data <- venn_setlabel(data)
+setlabel_data$name <- new_set_names
+
+# define new fill colors
+fill_colors <- c("#8a3838", "#6E5E61", "#51848a")
+
+# calculate percentages for region counts
+region_data <- venn_region(data)
+total_count <- sum(region_data$count)
+region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
+
+# plot the Venn diagram with the new settings
+deg_venn <- ggplot() +
+  # 1. region count layer
+  geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
+  scale_fill_manual(values = fill_colors, guide = FALSE) +
+  # 2. set edge layer
+  geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
+  # 3. set label layer
+  geom_sf_text(aes(label = name), data = setlabel_data, size = 6) +
+  # 4. region label layer
+  geom_sf_label(aes(label = paste0(count, "\n", percentage)), data = region_data, size = 5) +
+  theme_void() +
+  ggtitle(plot_title) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
+
+print(deg_venn)
 
 
+#################################
+# plotting venn diagram of FPMK #
+#################################
 
-deg_venn <- ggVennDiagram(transcript_sets, fill_alpha = 0, show_legend = FALSE, category.names = c("NSC34","C2C12")) +
-theme(legend.position = "none")
+# filter out genes that have fpkm less than .5 in each sample
+keep <- rowSums(fpkm_values > 0.5) > 0
+dds_filtered <- dds[keep,]
+
+# subset dds object
+dds_neuron <- dds_filtered[ , dds_filtered$cell.type == "NSC34"]
+dds_muscle <- dds_filtered[ , dds_filtered$cell.type == "C2C12"]
+
+# remove cell.type from experimental design
+dds_neuron@design <- ~ treatment
+dds_muscle@design <- ~ treatment
+
+# run DESeq2
+dds_neuron <- DESeq(dds_neuron)
+dds_muscle <- DESeq(dds_muscle)
+
+# saving the results
+neuronal_res <- results(dds_neuron, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
+muscle_res <- results(dds_muscle, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
+
+# filtering out genes with insignificat expression change 
+neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
+muscle_res_sig <- subset(muscle_res, padj < 0.05)
+
+
+# create a list of two sets of genes
+transcript_sets <- list(rownames(muscle_res_sig), rownames(neuronal_res_sig))
+
+# create a Venn diagram object using ggvenn
+venn <- Venn(transcript_sets)
+
+# process the data for plotting using ggvenn
+data <- process_data(venn)
+
+# define new set names and plot title
+new_set_names <- c("C2C12", "NSC34")
+plot_title <- "FPMK > 0.5"
+
+# create a new data frame for set labels with the new set names
+setlabel_data <- venn_setlabel(data)
+setlabel_data$name <- new_set_names
+
+# define new fill colors
+fill_colors <- c("#8a3838", "#6E5E61", "#51848a")
+
+# calculate percentages for region counts
+region_data <- venn_region(data)
+total_count <- sum(region_data$count)
+region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
+
+# plot the Venn diagram with the new settings
+deg_venn <- ggplot() +
+  # 1. region count layer
+  geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
+  scale_fill_manual(values = fill_colors, guide = FALSE) +
+  # 2. set edge layer
+  geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
+  # 3. set label layer
+  geom_sf_text(aes(label = name), data = setlabel_data, size = 6) +
+  # 4. region label layer
+  geom_sf_label(aes(label = paste0(count, "\n", percentage)), data = region_data, size = 5) +
+  theme_void() +
+  ggtitle(plot_title) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
+
 print(deg_venn)
 
 
