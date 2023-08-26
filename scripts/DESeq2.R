@@ -3,6 +3,7 @@ library(tidyverse)
 library(pheatmap)
 library(ggplot2)
 library(ggVennDiagram)
+library(biomaRt)
 
 
 #################################
@@ -178,144 +179,182 @@ log_fpkm_tdp_plot <- ggplot(fpkm_pca_df, aes(x = fpkm, y = pca2, color = group))
 print(log_fpkm_tdp_plot)
 
 
-# subset dds object
-dds_neuron <- dds[ , dds$cell.type == "NSC34"]
-dds_muscle <- dds[ , dds$cell.type == "C2C12"]
-
-# remove cell.type from experimental design
-dds_neuron@design <- ~ treatment
-dds_muscle@design <- ~ treatment
-
-# run DESeq2
-dds_neuron <- DESeq(dds_neuron)
-dds_muscle <- DESeq(dds_muscle)
-
-# saving the results
-neuronal_res <- results(dds_neuron, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
-muscle_res <- results(dds_muscle, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
-
-# filtering out genes with insignificat expression change 
-neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
-muscle_res_sig <- subset(muscle_res, padj < 0.05)
 
 
-################################
-# plotting venn diagram of DEG #
-################################
-
-# create a list of two sets of genes
-transcript_sets <- list(rownames(muscle_res_sig), rownames(neuronal_res_sig))
-
-# create a Venn diagram object using ggvenn
-venn <- Venn(transcript_sets)
-
-# process the data for plotting using ggvenn
-data <- process_data(venn)
-
-# define new set names and plot title
-new_set_names <- c("C2C12", "NSC34")
-plot_title <- "DEG"
-
-# create a new data frame for set labels with the new set names
-setlabel_data <- venn_setlabel(data)
-setlabel_data$name <- new_set_names
-
-# define new fill colors
-fill_colors <- c("#8a3838", "#6E5E61", "#51848a")
-
-# calculate percentages for region counts
-region_data <- venn_region(data)
-total_count <- sum(region_data$count)
-region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
-
-# plot the Venn diagram with the new settings
-deg_venn <- ggplot() +
-  # 1. region count layer
-  geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
-  scale_fill_manual(values = fill_colors, guide = FALSE) +
-  # 2. set edge layer
-  geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
-  # 3. set label layer
-  geom_sf_text(aes(label = name), data = setlabel_data, size = 6) +
-  # 4. region label layer
-  geom_sf_label(aes(label = paste0(count, "\n", percentage)), data = region_data, size = 5) +
-  theme_void() +
-  ggtitle(plot_title) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
-
-print(deg_venn)
 
 
-#################################
-# plotting venn diagram of FPMK #
-#################################
+######################################################
+DEG_calculation <- function(dds) {
+  # subset dds object
+  dds_neuron <- dds[ , dds$cell.type == "NSC34"]
+  dds_muscle <- dds[ , dds$cell.type == "C2C12"]
 
-# filter out genes that have fpkm less than .5 in each sample
+  # remove cell.type from experimental design
+  dds_neuron@design <- ~ treatment
+  dds_muscle@design <- ~ treatment
+
+  # run DESeq2
+  dds_neuron <- DESeq(dds_neuron)
+  dds_muscle <- DESeq(dds_muscle)
+
+  # saving the results
+  neuronal_res <- results(dds_neuron, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
+  muscle_res <- results(dds_muscle, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
+
+  # filtering out genes with insignificat expression change 
+  neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
+  muscle_res_sig <- subset(muscle_res, padj < 0.05)
+  
+  return(list(neuronal_res_sig = neuronal_res_sig, muscle_res_sig = muscle_res_sig))
+}
+
+
+DEG_venn <- function(data_list, title) {
+  # extract the row names of the data frames
+  transcript_sets <- lapply(data_list, rownames)
+  
+  # create a Venn diagram object using ggvenn
+  venn <- Venn(transcript_sets)
+  
+  # process the data for plotting using ggvenn
+  data <- process_data(venn)
+  
+  # define new set names and plot title
+  new_set_names <- c("C2C12", "NSC34")
+  plot_title <- title
+  
+  # create a new data frame for set labels with the new set names
+  setlabel_data <- venn_setlabel(data)
+  setlabel_data$name <- new_set_names
+  
+  # define new fill colors
+  fill_colors <- c("#8a3838", "#6E5E61", "#51848a")
+  
+  # calculate percentages for region counts
+  region_data <- venn_region(data)
+  total_count <- sum(region_data$count)
+  region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
+  
+  # plot the Venn diagram with the new settings
+  deg_venn <- ggplot() +
+    # 1. region count layer
+    geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
+    scale_fill_manual(values = fill_colors, guide = FALSE) +
+    # 2. set edge layer
+    geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
+    # 3. set label layer
+    geom_sf_text(aes(label = name), data = setlabel_data, size = 6) +
+    # 4. region label layer
+    geom_sf_label(aes(label = paste0(count, "\n", percentage)), data = region_data, size = 5) +
+    theme_void() +
+    ggtitle(plot_title) +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
+  
+  return(deg_venn)
+}
+
+
+
+
+
+
+# DEG of all the genes
+deg_full <- DEG_calculation(dds)
+deg_full_venn <- DEG_venn(deg_full, "DEG")
+print(deg_full_venn)
+
+
+# DEG of genes with fpkm > 0.5 in each sample
 keep <- rowSums(fpkm_values > 0.5) > 0
 dds_filtered <- dds[keep,]
 
-# subset dds object
-dds_neuron <- dds_filtered[ , dds_filtered$cell.type == "NSC34"]
-dds_muscle <- dds_filtered[ , dds_filtered$cell.type == "C2C12"]
-
-# remove cell.type from experimental design
-dds_neuron@design <- ~ treatment
-dds_muscle@design <- ~ treatment
-
-# run DESeq2
-dds_neuron <- DESeq(dds_neuron)
-dds_muscle <- DESeq(dds_muscle)
-
-# saving the results
-neuronal_res <- results(dds_neuron, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
-muscle_res <- results(dds_muscle, alpha = 0.05, contrast = c("treatment", "siTDP", "siLUC"))
-
-# filtering out genes with insignificat expression change 
-neuronal_res_sig <- subset(neuronal_res, padj < 0.05)
-muscle_res_sig <- subset(muscle_res, padj < 0.05)
-
-
-# create a list of two sets of genes
-transcript_sets <- list(rownames(muscle_res_sig), rownames(neuronal_res_sig))
-
-# create a Venn diagram object using ggvenn
-venn <- Venn(transcript_sets)
-
-# process the data for plotting using ggvenn
-data <- process_data(venn)
-
-# define new set names and plot title
-new_set_names <- c("C2C12", "NSC34")
-plot_title <- "FPMK > 0.5"
-
-# create a new data frame for set labels with the new set names
-setlabel_data <- venn_setlabel(data)
-setlabel_data$name <- new_set_names
-
-# define new fill colors
-fill_colors <- c("#8a3838", "#6E5E61", "#51848a")
-
-# calculate percentages for region counts
-region_data <- venn_region(data)
-total_count <- sum(region_data$count)
-region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
-
-# plot the Venn diagram with the new settings
-deg_venn <- ggplot() +
-  # 1. region count layer
-  geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
-  scale_fill_manual(values = fill_colors, guide = FALSE) +
-  # 2. set edge layer
-  geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
-  # 3. set label layer
-  geom_sf_text(aes(label = name), data = setlabel_data, size = 6) +
-  # 4. region label layer
-  geom_sf_label(aes(label = paste0(count, "\n", percentage)), data = region_data, size = 5) +
-  theme_void() +
-  ggtitle(plot_title) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
-
-print(deg_venn)
+deg_filtered <- DEG_calculation(dds_filtered)
+deg_filtered_venn <- DEG_venn(deg_filtered, "FPKM > 0.5")
+print(deg_filtered_venn)
 
 
 
+########################################
+# Expression changes of common targets #
+########################################
+
+# Convert the DESeqResults objects to data frames
+muscle_res_sig_df <- as.data.frame(deg_full$muscle_res_sig)
+neuronal_res_sig_df <- as.data.frame(deg_full$neuronal_res_sig)
+
+# Merge the two data frames by row names
+merged_data <- merge(muscle_res_sig_df, neuronal_res_sig_df, by = "row.names", suffixes = c(".muscle", ".neuronal"))
+
+# Set the row names of the merged data frame to the gene names
+rownames(merged_data) <- merged_data$Row.names
+
+# Remove the Row.names column from the merged data frame
+merged_data$Row.names <- NULL
+
+# calculate Spearman's rank correlation coefficient and p-value
+cor.test <- cor.test(merged_data$log2FoldChange.muscle, merged_data$log2FoldChange.neuronal, method = "spearman")
+rho <- cor.test$estimate
+p.value <- cor.test$p.value
+
+# create the plot
+expression_changes <- ggplot(merged_data) +
+  geom_point(aes(x = log2FoldChange.muscle, y = log2FoldChange.neuronal)) +
+  geom_abline(intercept = 0, slope = 1, color = "grey") +
+  geom_smooth(aes(x = log2FoldChange.muscle, y = log2FoldChange.neuronal), method = "lm", color = "#51848a") +
+  xlab("log2 (fold change) in C2C12") +
+  ylab("log2 (fold change) in NSC34") + 
+  nature_theme() +
+  xlim(-2, 2) +
+  ylim(-2, 2) +
+  theme(axis.text.x = element_text(angle = 0)) +
+  annotate("text", x = 1.9, y = -1.9, label = paste("Spearman's ρ =", round(rho, 2), "\np-value =", format.pval(p.value, digits = 1)), hjust = 1, size = 6)
+
+print(expression_changes)
+#  there is a strong positive correlation between the expression changes of common targets in C2C12 and NSC34 cells
+# if a transcript is upregulated or downregulated in C2C12 cells due to TDP-43 depletion, it is likely to be upregulated or downregulated in NSC34 cells as well, and vice versa.
+
+
+
+
+
+#################
+# volcano plots #
+#################
+
+
+#####change this do be added into dds instead
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+gene_ids <- getBM(attributes = c("ensembl_gene_id", "mgi_symbol"),
+                  filters = "ensembl_gene_id",
+                  values = rownames(neuronal_res_sig_df),
+                  mart = ensembl)
+
+
+# add this into function
+neuronal_res_sig_df <- as.data.frame(neuronal_res_sig)
+
+neuronal_res_sig_df <- neuronal_res_sig_df %>%
+  mutate(gene_id = gene_ids$mgi_symbol[match(rownames(neuronal_res_sig_df), gene_ids$ensembl_gene_id)])
+
+
+# create a new column to indicate if the gene is specific for neuronal cells
+neuronal_res_sig_df$specific <- !rownames(neuronal_res_sig_df) %in% rownames(as.data.frame(deg_full$muscle_res_sig))
+
+
+# create a volcano plot using ggplot2
+neuronal_volcano_plot <- ggplot(neuronal_res_sig_df, aes(x = log2FoldChange, y = -log10(padj), color = specific)) +
+  geom_point() +
+  scale_color_manual(values = c("#515050", "#51848a"), labels = c("common", "NSC34-specific")) +
+  geom_vline(xintercept = c(log2(0.7), log2(1.3)), color = "grey") +
+  geom_text(data = subset(neuronal_res_sig_df, abs(log2FoldChange) > 1.5 & padj < 0.05), aes(label = gene_id), hjust = 1.5, vjust = 0.5) +
+  xlab("log2(fold change)") +
+  ylab("-log10 (padj)") + 
+  ggtitle("NSC34") +
+  xlim(-3, 3) +
+  ylim(0, 100) +
+  nature_theme() +
+  theme(axis.text.x = element_text(angle = 0),
+        plot.title = element_text(hjust = 0.5, size = 24))
+
+# display the plot
+print(neuronal_volcano_plot)
