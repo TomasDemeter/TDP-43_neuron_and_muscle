@@ -4,6 +4,7 @@ library(pheatmap)
 library(ggplot2)
 library(ggVennDiagram)
 library(biomaRt)
+library(ggrepel)
 
 
 #################################
@@ -92,12 +93,20 @@ dds <- DESeqDataSetFromMatrix(countData = raw_counts,
                               colData = sample_data,
                               design = ~ cell.type + treatment)
 
-
 # specify factor level (what is treated and what is control)
 dds$treatment <- relevel(dds$treatment, ref = "siLUC")
 
 # add gene_length info to dds object
 mcols(dds)$basepairs <- gene_length$Length
+
+# add gene_ids
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+gene_ids <- getBM(attributes = c("ensembl_gene_id", "mgi_symbol"),
+                  filters = "ensembl_gene_id",
+                  values = rownames(rowData(dds)),
+                  mart = ensembl)
+
+rowData(dds)$gene_id <- gene_ids$mgi_symbol[match(rownames(rowData(dds)), gene_ids$ensembl_gene_id)]
 
 # filter out genese with less than 1 read in all samples
 dds <- dds[which(rowSums(counts(dds)) >= 1),]
@@ -208,7 +217,7 @@ DEG_calculation <- function(dds) {
   return(list(neuronal_res_sig = neuronal_res_sig, muscle_res_sig = muscle_res_sig))
 }
 
-
+##################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! fix gene_id into result list
 DEG_venn <- function(data_list, title) {
   # extract the row names of the data frames
   transcript_sets <- lapply(data_list, rownames)
@@ -254,15 +263,10 @@ DEG_venn <- function(data_list, title) {
 }
 
 
-
-
-
-
 # DEG of all the genes
 deg_full <- DEG_calculation(dds)
 deg_full_venn <- DEG_venn(deg_full, "DEG")
 print(deg_full_venn)
-
 
 # DEG of genes with fpkm > 0.5 in each sample
 keep <- rowSums(fpkm_values > 0.5) > 0
@@ -271,7 +275,6 @@ dds_filtered <- dds[keep,]
 deg_filtered <- DEG_calculation(dds_filtered)
 deg_filtered_venn <- DEG_venn(deg_filtered, "FPKM > 0.5")
 print(deg_filtered_venn)
-
 
 
 ########################################
@@ -320,33 +323,22 @@ print(expression_changes)
 #################
 # volcano plots #
 #################
-
-
-#####change this do be added into dds instead
-ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
-gene_ids <- getBM(attributes = c("ensembl_gene_id", "mgi_symbol"),
-                  filters = "ensembl_gene_id",
-                  values = rownames(neuronal_res_sig_df),
-                  mart = ensembl)
-
-
-# add this into function
-neuronal_res_sig_df <- as.data.frame(neuronal_res_sig)
-
-neuronal_res_sig_df <- neuronal_res_sig_df %>%
-  mutate(gene_id = gene_ids$mgi_symbol[match(rownames(neuronal_res_sig_df), gene_ids$ensembl_gene_id)])
-
+head(neuronal_res_sig_df)
 
 # create a new column to indicate if the gene is specific for neuronal cells
 neuronal_res_sig_df$specific <- !rownames(neuronal_res_sig_df) %in% rownames(as.data.frame(deg_full$muscle_res_sig))
 
 
-# create a volcano plot using ggplot2
-neuronal_volcano_plot <- ggplot(neuronal_res_sig_df, aes(x = log2FoldChange, y = -log10(padj), color = specific)) +
+neuronal_volcano_plot <- ggplot(neuronal_res_sig_df, 
+                              aes(x = log2FoldChange, y = -log10(padj), color = specific)) +
   geom_point() +
-  scale_color_manual(values = c("#515050", "#51848a"), labels = c("common", "NSC34-specific")) +
-  geom_vline(xintercept = c(log2(0.7), log2(1.3)), color = "grey") +
-  geom_text(data = subset(neuronal_res_sig_df, abs(log2FoldChange) > 1.5 & padj < 0.05), aes(label = gene_id), hjust = 1.5, vjust = 0.5) +
+  scale_color_manual(values = c("#515050", "#51848a"),
+                    labels = c("common", "NSC34-specific")) +
+  geom_vline(xintercept = c(log2(0.7), log2(1.3)),
+            color = "grey") +
+  geom_label_repel(data = subset(neuronal_res_sig_df,
+                  abs(log2FoldChange) > 1.5 & padj < 0.05),
+                  aes(label = gene_id), size = 5, force = 50, box.padding = 0.5, direction = "both", show.legend = FALSE) +
   xlab("log2(fold change)") +
   ylab("-log10 (padj)") + 
   ggtitle("NSC34") +
@@ -354,7 +346,9 @@ neuronal_volcano_plot <- ggplot(neuronal_res_sig_df, aes(x = log2FoldChange, y =
   ylim(0, 100) +
   nature_theme() +
   theme(axis.text.x = element_text(angle = 0),
-        plot.title = element_text(hjust = 0.5, size = 24))
+        plot.title = element_text(hjust = 0.5, size = 24),
+        legend.text = element_text(size = 20)) +
+  guides(color=guide_legend(override.aes=list(shape = 15, size=5)))
 
 # display the plot
 print(neuronal_volcano_plot)
