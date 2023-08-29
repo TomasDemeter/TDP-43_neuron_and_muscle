@@ -85,7 +85,7 @@ def get_hisat2_names(wildcards):
 BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MULTIQC     = RESULT_DIR + "multiqc_report.html"
 COUNTS      = RESULT_DIR + "feature_counts_table.tsv"
-DESEQ       = RESULT_DIR + "DESeq2_output.rds"
+DESEQ       = RESULT_DIR + "/DESeq2_output/DESeq2_output.rds"
 
 ###########################
 # Pipeline
@@ -95,7 +95,7 @@ rule all:
         BAM_FILES,
         COUNTS,
         MULTIQC,
-       # DESEQ
+        DESEQ
     message:
         "RNA-seq pipeline run complete!"
 

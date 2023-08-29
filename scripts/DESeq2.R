@@ -87,7 +87,7 @@ prepare_counts <- function(raw_counts) {
 prepare_sample_data <- function(meta_data){
   # rename values in treatment and keep only relevant columns from metadata and set them as factors
   meta_data$treatment <- ifelse(grepl("Control", meta_data$treatment, ignore.case = TRUE), "siLUC", 
-                         ifelse(grepl("TDP", meta_data$treatment, ignore.case = TRUE), "siTDP", meta_data$treatment))
+  ifelse(grepl("TDP", meta_data$treatment, ignore.case = TRUE), "siTDP", meta_data$treatment))
 
   sample_data <- meta_data[,c("cell.type", "treatment")]
   sample_data$cell.type <- as.factor(sample_data$cell.type)
@@ -346,13 +346,13 @@ volcano_plot <- function(dds, data_frame_1, data_frame_2, cell_names, colour) {
                     aes(x = log2FoldChange, y = -log10(padj), color = specific)) +
     geom_point() +
     scale_color_manual(values = c("#515050",colour),
-                       labels = c("common", paste0(cell_names, "-specific"))) +
+                      labels = c("common", paste0(cell_names, "-specific"))) +
     geom_vline(xintercept = c(log2(0.7), log2(1.3)),
-               color = "grey") +
+              color = "grey") +
     geom_label_repel(data = subset(df_1,
                                     abs(log2FoldChange) > 1.5 & padj < 0.05),
-                     aes(label = gene_id), size = 5, force = 10, box.padding = 0.5,
-                     direction = "both", show.legend = FALSE) +
+                    aes(label = gene_id), size = 5, force = 10, box.padding = 0.5,
+                    direction = "both", show.legend = FALSE) +
     xlab("log2(fold change)") +
     ylab("-log10 (padj)") +
     ggtitle(cell_names) +
@@ -444,12 +444,18 @@ ggsave(filename = paste0(output_folder, "/expression_changes_plot.png"), plot = 
 ggsave(filename = paste0(output_folder, "/neuronal_volcano.png"), plot = neuronal_volcano)
 ggsave(filename = paste0(output_folder, "/muscle_volcano.png"), plot = muscle_volcano)
 
-# Save DEG results
+# Save DGE results
 neurons_dge <- dge_full[[1]]
 muscle_dge <- dge_full[[2]]
+
+neurons_dge$ensembl_id <- rownames(neurons_dge)
 write.csv(neurons_dge, file = paste0(output_folder, "/neurons_dge.csv"), row.names = FALSE)
+
+muscle_dge$ensembl_id <- rownames(muscle_dge)
 write.csv(muscle_dge, file = paste0(output_folder, "/muscle_dge.csv"), row.names = FALSE)
 
-# save DESeqDataSet and fpkm valeus
-saveRDS(dds, file = paste0(output_folder, "/tdp43_dds.rds"))
-write.csv(fpkm_values, file = paste0(output_folder, "/fpkm_values.csv"), row.names = FALSE)
+
+# save DESeqDataSet and fpkm values
+saveRDS(dds, file = paste0(output_folder, "/DESeq2_output.rds"))
+write.csv(fpkm_values, file = paste0(output_folder, "/fpkm_values.csv"), row.names = TRUE)
+
