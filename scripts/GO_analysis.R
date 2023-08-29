@@ -8,6 +8,7 @@ library(dplyr)
 library(tidyr)
 
 input_path <- "results/DESeq2_output/"
+output_folder <- "results/GO_term_analysis"
 
 neuron_genes <- read.csv(paste0(input_path, "neurons_dge.csv"))
 muscle_genes <- read.csv(paste0(input_path, "muscle_dge.csv"))
@@ -46,6 +47,11 @@ nature_theme <- function(
             )
 }
 
+
+########################################
+# running enrichment GO-terms analysis #
+########################################
+
 go_term_analysis <- function(condition_df) {
     ensembl_ids <- condition_df$ensembl_id
     ego <- enrichGO(gene = ensembl_ids,
@@ -57,6 +63,11 @@ go_term_analysis <- function(condition_df) {
                     qvalueCutoff = 0.05)
     return(ego)
 }
+
+
+###################################################################
+# generating venn diagram of enriched GO-terms in both cell lines #
+###################################################################
 
 EGO_venn <- function(ego1, ego2, ego1_name, ego2_name, title) {
 
@@ -111,6 +122,9 @@ EGO_venn <- function(ego1, ego2, ego1_name, ego2_name, title) {
 }
 
 
+#################################################
+# plotting erichment GO-terms in each cell line #
+#################################################
 
 EGO_terms <- function (ego1, ego2, ego1_name, ego2_name) {
     # Combine the description and counts into a data frame
@@ -147,11 +161,25 @@ EGO_terms <- function (ego1, ego2, ego1_name, ego2_name) {
 ########################
 ########################
 
+# generating results
 ego_neuron <- go_term_analysis(neuron_genes)
 ego_muscle <- go_term_analysis(muscle_genes)
 
+# plotting the resutls
 ego_venn_plot <- EGO_venn(ego_muscle, ego_neuron, "C2C12", "NSC34", "GO terms")
-print(ego_venn_plot) 
+ego_terms_plot <- EGO_terms(ego_muscle, ego_neuron, "C2C12", "NSC34") # different pathways compared to the paper but still related to neurodegeneration
 
-ego_terms_plot <- EGO_terms(ego_muscle, ego_neuron, "C2C12", "NSC34")
-print(ego_terms_plot) # different pathways compared to the paper but still related to neurodegeneration
+
+######################
+######################
+# Saving the reuslts #
+######################
+######################
+
+# saving the figures
+ggsave(filename = paste0(output_folder, "/ego_venn_plot.png"), plot = ego_venn_plot)
+ggsave(filename = paste0(output_folder, "/ego_terms_plot.png"), plot = ego_terms_plot)
+
+# saving enriched GO-terms analysis
+write.csv(ego_neuron, file = paste0(output_folder, "/ego_neuron.csv"), row.names = FALSE)
+write.csv(ego_muscle, file = paste0(output_folder, "/ego_muscle.csv"), row.names = FALSE)
