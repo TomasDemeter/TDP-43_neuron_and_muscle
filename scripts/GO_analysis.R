@@ -111,6 +111,36 @@ EGO_venn <- function(ego1, ego2, ego1_name, ego2_name, title) {
 }
 
 
+
+EGO_terms <- function (ego1, ego2, ego1_name, ego2_name) {
+    # Combine the description and counts into a data frame
+    ego1_df <- data.frame(description = ego1@result$Description, counts = ego1@result$Count)
+    ego2_df <- data.frame(description = ego2@result$Description, counts = ego2@result$Count)
+
+    combined_df <-  inner_join(ego1_df, ego2_df, by = "description", suffix = c(paste0("_", ego1_name), paste0("_", ego2_name)))
+
+    # Use the [[ operator to access the columns by name
+    combined_df$total_counts <-  combined_df[[paste0("counts_", ego1_name)]] + combined_df[[paste0("counts_", ego2_name)]]
+
+    top15_combined_df <- head(combined_df[order(-combined_df$total_counts),], 15)
+
+    # Use the paste0() function to create the column names
+    df_long <- top15_combined_df %>%
+        pivot_longer(cols = c(paste0("counts_", ego1_name), paste0("counts_", ego2_name)), names_to = "Count_Type", values_to = "Counts")
+
+    # Create the horizontal bar chart
+    EGO_terms_plot <- ggplot(df_long, aes(x = Counts, y = description, fill = Count_Type)) +
+        geom_bar(stat = "identity", position = "dodge") +
+        labs(x = "Gene no.", y = "") +
+        scale_fill_manual(values = setNames(c("#51848a", "#8a3838"), 
+                        c(paste0("counts_", ego1_name), paste0("counts_", ego2_name)))) +
+        nature_theme() +
+        theme(legend.position = "none")
+        
+    return(EGO_terms_plot)
+}
+
+
 ########################
 ########################
 # Running the analysis #
@@ -121,44 +151,7 @@ ego_neuron <- go_term_analysis(neuron_genes)
 ego_muscle <- go_term_analysis(muscle_genes)
 
 ego_venn_plot <- EGO_venn(ego_muscle, ego_neuron, "C2C12", "NSC34", "GO terms")
-print(ego_venn_plot)
-
-
-
-# different pathways compared to the paper but still related to neurodegeneration
-
-EGO_terms <- function (ego1, ego2, ego1_name, ego2_name) {
-    # Combine the description and counts into a data frame
-    ego1_df <- data.frame(description = ego1@result$Description, counts = ego1@result$Count)
-    ego2_df <- data.frame(description = ego2@result$Description, counts = ego2@result$Count)
-
-    combined_df <-  inner_join(ego1_df, ego2_df, by = "Description", suffix = c(ego1_name, ego2_name))
-
-    # Use the [[ operator to access the columns by name
-    combined_df$total_counts <-  combined_df[[paste0("Counts_", ego1_name)]] + combined_df[[paste0("Counts_", ego2_name)]]
-    
-    top15_combined_df <- head(combined_df[order(-combined_df$total_counts),], 15)
-
-    # Use the paste0() function to create the column names
-    df_long <- top15_combined_df %>%
-        pivot_longer(cols = c(paste0("Counts_", ego1_name), paste0("Counts_", ego2_name)), names_to = "Count_Type", values_to = "Counts")
-
-    # Create the horizontal bar chart
-    EGO_terms_plot <- ggplot(df_long, aes(x = Counts, y = Description, fill = Count_Type)) +
-        geom_bar(stat = "identity", position = "dodge") +
-        labs(x = "Gene no.", y = "") +
-        scale_fill_manual(values = setNames(c("#51848a", "#8a3838"), c(paste0("Counts_", ego1_name), paste0("Counts_", ego2_name)))) +
-        nature_theme() +
-        theme(legend.position = "none")
-        
-    return(EGO_terms_plot)
-}
-
+print(ego_venn_plot) 
 
 ego_terms_plot <- EGO_terms(ego_muscle, ego_neuron, "C2C12", "NSC34")
-
-
-data.frame(ego_neuron$Description)
-colnames(ego_neuron)
-
-ego1_df <- data.frame(description = ego_muscle@result$Description, counts = ego_muscle@result$Count)
+print(ego_terms_plot) # different pathways compared to the paper but still related to neurodegeneration
