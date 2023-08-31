@@ -57,8 +57,8 @@ def get_fastq(wildcards):
 def get_trim_names(wildcards):
     """
     This function:
-      1. Checks if the sample is paired end or single end
-      2. Returns the correct input and output trimmed file names. 
+        1. Checks if the sample is paired end or single end
+        2. Returns the correct input and output trimmed file names. 
     """
     inFile = get_fastq(wildcards)
 
@@ -70,14 +70,37 @@ def get_trim_names(wildcards):
 def get_hisat2_names(wildcards):
     """
     This function:
-      1. Checks if the sample is paired end or single end.
-      2. Returns the correct input file names for Hisat2 mapping step.
+        1. Checks if the sample is paired end or single end.
+        2. Returns the correct input file names for Hisat2 mapping step.
     """
     if sample_is_single_end(wildcards.SRR):
         return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz"     
     else:
         return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz" + " -2 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
+
+def rmart_inputs(RESULT_DIR, samples):
+    snakemake_file = pd.read_csv(samplefile)
+    bam_files = glob.glob(RESULT_DIR + "hisat2_aligned/*.bam")
+    
+    controls = [snakemake_file.iloc[i,0] for i, j in enumerate(snakemake_file.treatment) if "control" in j.lower()]
+    experiments = [snakemake_file.iloc[i,0] for i, j in enumerate(snakemake_file.treatment) if "control" not in j.lower()]
+    
+    control_bams = [i for i in bam_files if any(c in i for c in controls)]
+    experiments_bams = [i for i in bam_files if any(c in i for c in experiments)]
+    
+    controls_txt_path = RESULT_DIR + 'hisat2_aligned/control_bams.txt'
+    experiments_txt_path = RESULT_DIR + 'hisat2_aligned/experiments_bams.txt'
+
+    with open(RESULT_DIR + 'hisat2_aligned/control_bams.txt', 'w') as f:
+    for item in control_bams:
+        f.write(f'{item}\n')
+    
+    with open(RESULT_DIR + 'hisat2_aligned/experiments_bams.txt', 'w') as f:
+    for item in experiments_bams:
+        f.write(f'{item}\n')
+        
+    return "--b1 " + controls_txt_path + "--b2 " + experiments_txt_path    
 
 #################
 # Desired outputs
@@ -242,6 +265,31 @@ rule DESeq2:
     message:
         "Running DESeq2"
     shell:
+        "mkdir -p {RESULT_DIR}DESeq2_output "
         "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.norm}"
         
         
+rule rmats:
+    input: 
+        hisat2_output = rules.hisat2_samtools.output.bam
+    output:
+        rmats_output = expand(RESULT_DIR + "rmats/{SRR}_JC.MATS.SE.txt", SRR = SAMPLES)
+    params:
+        read_length = config["rmats"]["read_length"],
+        FDR_cuttoff = config["rmats"]["FDR_cutoff"],
+        read_type   = config["rmats"]["read_type"],
+        gtf_file    = config["refs"]["gtf"],
+        inputs      = rmart_inputs,
+        rmats_exe   = config["ramts"]['rmats_executable']
+    threads: 7
+    message: "Running rMATS"
+    shell:
+        "mkdir -p {RESULT_DIR}rMATS_output  "
+        "{params.rmats_exe} "
+        "{params.inputs} "
+        "--gtf {params.gtf_file} "
+        "-t {params.read_type} "
+        "--nthread {threads} "
+        "--readLength {params.read_length} "
+        "-cstat {params.FDR_cutoff}"
+        "--od {output.rmats_output}"
