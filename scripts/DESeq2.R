@@ -12,9 +12,9 @@ library(ggrepel)
 ####################
 
 #args <- commandArgs(trailingOnly = TRUE)
-raw_counts_filepath <- "results/feature_counts_table.tsv" #args[1]
-meta_data_filepath <- "data/raw_reads/SRR_metadata.csv" #args[2]
-output_folder <- "results/DESeq2_output" # args[3]
+raw_counts_filepath <- args[1] # "results/feature_counts_table.tsv" #
+meta_data_filepath <- args[2] # "data/raw_reads/SRR_metadata.csv" #
+output_folder <-  args[3] # "results/DESeq2_output" #
 
 # load featureCounts output, metadata adn gtf file
 raw_counts <- read.csv(raw_counts_filepath, skip = 1, sep = "\t", row.names="Geneid")

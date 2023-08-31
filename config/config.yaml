@@ -24,8 +24,8 @@ fastp:
 
 
   # rmats
-  rmats:
-    rmats_executable: "/home/tomasd/miniconda3/envs/RNAseqR/rMATS/rmats.py" 
-    read_length: 150
-    FDR_cutoff: 0.01
-    read_type: paired
+rmats:
+  rmats_executable: "/home/tomasd/miniconda3/envs/RNAseqR/rMATS/rmats.py" 
+  read_length: 150
+  FDR_cutoff: 0.01
+  read_type: paired

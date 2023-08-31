@@ -79,28 +79,28 @@ def get_hisat2_names(wildcards):
         return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz" + " -2 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
 
-def rmart_inputs(RESULT_DIR, samples):
+def rmart_inputs(samplefile):
     snakemake_file = pd.read_csv(samplefile)
-    bam_files = glob.glob(RESULT_DIR + "hisat2_aligned/*.bam")
+    bam_files = glob.glob(os.path.abspath(RESULT_DIR + "hisat2_aligned/*.bam"))
     
-    controls = [snakemake_file.iloc[i,0] for i, j in enumerate(snakemake_file.treatment) if "control" in j.lower()]
-    experiments = [snakemake_file.iloc[i,0] for i, j in enumerate(snakemake_file.treatment) if "control" not in j.lower()]
+    controls = [snakemake_file.iloc[i, 0] for i, j in enumerate(snakemake_file.treatment) if "control" in j.lower()]
+    experiments = [snakemake_file.iloc[i, 0] for i, j in enumerate(snakemake_file.treatment) if "control" not in j.lower()]
     
     control_bams = [i for i in bam_files if any(c in i for c in controls)]
     experiments_bams = [i for i in bam_files if any(c in i for c in experiments)]
     
-    controls_txt_path = RESULT_DIR + 'hisat2_aligned/control_bams.txt'
-    experiments_txt_path = RESULT_DIR + 'hisat2_aligned/experiments_bams.txt'
+    controls_txt_path = os.path.abspath(RESULT_DIR + 'hisat2_aligned/control_bams.txt')
+    experiments_txt_path = os.path.abspath(RESULT_DIR + 'hisat2_aligned/experiments_bams.txt')
 
-    with open(RESULT_DIR + 'hisat2_aligned/control_bams.txt', 'w') as f:
-    for item in control_bams:
-        f.write(f'{item}\n')
+    with open(controls_txt_path, 'w') as f:
+        for item in control_bams:
+            f.write(f'{item}\n')
     
-    with open(RESULT_DIR + 'hisat2_aligned/experiments_bams.txt', 'w') as f:
-    for item in experiments_bams:
-        f.write(f'{item}\n')
+    with open(experiments_txt_path, 'w') as f:
+        for item in experiments_bams:
+            f.write(f'{item}\n')
         
-    return "--b1 " + controls_txt_path + "--b2 " + experiments_txt_path    
+    return "--b1 " + controls_txt_path + " --b2 " + experiments_txt_path
 
 #################
 # Desired outputs
@@ -108,7 +108,8 @@ def rmart_inputs(RESULT_DIR, samples):
 BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MULTIQC     = RESULT_DIR + "multiqc_report.html"
 COUNTS      = RESULT_DIR + "feature_counts_table.tsv"
-DESEQ       = RESULT_DIR + "/DESeq2_output/DESeq2_output.rds"
+DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
+RMATS       = RESULT_DIR + "rMATS_output"
 
 ###########################
 # Pipeline
@@ -118,7 +119,8 @@ rule all:
         BAM_FILES,
         COUNTS,
         MULTIQC,
-        DESEQ
+        DESEQ,
+        RMATS
     message:
         "RNA-seq pipeline run complete!"
 
@@ -261,35 +263,38 @@ rule DESeq2:
         raw       = RESULT_DIR + "feature_counts_table.tsv",
         metadata  = config["samples"]
     output:
-        norm = RESULT_DIR + "DESeq2_output.rds"
+        output_dir = directory(RESULT_DIR + "DESeq2_output/")
     message:
         "Running DESeq2"
     shell:
-        "mkdir -p {RESULT_DIR}DESeq2_output "
-        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.norm}"
+        "mkdir -p {RESULT_DIR}DESeq2_output; "
+        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.output_dir}"
         
         
 rule rmats:
     input: 
-        hisat2_output = rules.hisat2_samtools.output.bam
+        bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
     output:
-        rmats_output = expand(RESULT_DIR + "rmats/{SRR}_JC.MATS.SE.txt", SRR = SAMPLES)
+        rmats_output = directory(RESULT_DIR + "rMATS_output")
     params:
         read_length = config["rmats"]["read_length"],
-        FDR_cuttoff = config["rmats"]["FDR_cutoff"],
+        FDR_cutoff  = config["rmats"]["FDR_cutoff"],
         read_type   = config["rmats"]["read_type"],
         gtf_file    = config["refs"]["gtf"],
-        inputs      = rmart_inputs,
-        rmats_exe   = config["ramts"]['rmats_executable']
+        inputs      = rmart_inputs(samplefile),
+        rmats_exe   = config["rmats"]['rmats_executable'],
+        temp_output = RESULT_DIR + "rMATS_output/tmp/"
     threads: 7
     message: "Running rMATS"
     shell:
-        "mkdir -p {RESULT_DIR}rMATS_output  "
+        "mkdir -p {output.rmats_output}; "
+        "mkdir -p {params.temp_output}; "
         "{params.rmats_exe} "
         "{params.inputs} "
         "--gtf {params.gtf_file} "
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
-        "-cstat {params.FDR_cutoff}"
-        "--od {output.rmats_output}"
+        "--cstat {params.FDR_cutoff} "
+        "--od {output.rmats_output} "
+        "--tmp {params.temp_output}"
