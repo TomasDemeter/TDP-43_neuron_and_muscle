@@ -1,28 +1,28 @@
-#########################################
-# Snakemake pipeline for RNA-Seq analysis
-#########################################
+###########################################
+# Snakemake pipeline for RNA-Seq analysis #
+###########################################
 
 
-###########
-# Libraries
-###########
+#############
+# Libraries #
+#############
 import os
 import glob
 import pandas as pd
 
 
-###############
-# Configuration
-###############
+#################
+# Configuration #
+#################
 configfile: "config/config.yaml" # where to find parameters
 WORKING_DIR = config["working_dir"]
 RESULT_DIR  = config["result_dir"]
 samplefile  = config["samples"]
 
 
-########################
-# Samples and conditions
-########################
+##########################
+# Samples and conditions #
+##########################
 # create lists containing the sample names and conditions
 samples = pd.read_csv(config["samples"], dtype = str, index_col = 0)
 SAMPLES = samples.index.tolist()
@@ -44,7 +44,6 @@ def sample_is_single_end(sample_name):
     sample = samples.loc[sample_name]
     return sample[library_layout_col].lower() != "paired"
 
-
 def get_fastq(wildcards):
     """This function checks if the sample has paired end or single end reads 
     and returns either the value of the sample attribute of the wildcards object if single end 
@@ -52,7 +51,10 @@ def get_fastq(wildcards):
     if sample_is_single_end(wildcards.SRR):
         return WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}" + ".fastq.gz"
     else:
-        return (WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_1" + ".fastq.gz", WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_2" + ".fastq.gz")
+        return (
+            WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_1" + ".fastq.gz",
+            WORKING_DIR + "raw_reads/" + f"{wildcards.SRR}_2" + ".fastq.gz",
+        )
 
 def get_trim_names(wildcards):
     """
@@ -65,7 +67,11 @@ def get_trim_names(wildcards):
     if sample_is_single_end(wildcards.SRR):
         return "--in1 " + inFile[0] + " --out1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_trimmed.fq.gz" 
     else:
-        return "--in1 " + inFile[0] + " --in2 " + inFile[1] + " --out1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz --out2 "  + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
+        return (
+            "--in1 " + inFile[0] + " --in2 " + inFile[1] + " --out1 " +
+            WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz --out2 " +
+            WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
+        )
 
 def get_hisat2_names(wildcards):
     """
@@ -102,32 +108,34 @@ def rmart_inputs(samplefile):
         
     return "--b1 " + controls_txt_path + " --b2 " + experiments_txt_path
 
-#################
-# Desired outputs
-#################
+###################
+# Desired outputs #
+###################
 BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MULTIQC     = RESULT_DIR + "multiqc_report.html"
-COUNTS      = RESULT_DIR + "feature_counts_table.tsv"
+COUNTS      = RESULT_DIR + "featureCounts/feature_counts_table.tsv"
+RMATS       = RESULT_DIR + "rMATS_output/summary.txt"
 DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
-RMATS       = RESULT_DIR + "rMATS_output"
+GO_ANALYSIS = RESULT_DIR + "GO_term_analysis/"
 
-###########################
-# Pipeline
-###########################
+############
+# Pipeline #
+############
 rule all:
     input:
         BAM_FILES,
         COUNTS,
         MULTIQC,
+        RMATS,
         DESEQ,
-        RMATS
+        GO_ANALYSIS
     message:
         "RNA-seq pipeline run complete!"
 
 
-###########################
-# Genome reference indexing
-###########################
+#############################
+# Genome reference indexing #
+#############################
 rule hisat2_index:
     input:
         fasta   = config["refs"]["genome"],
@@ -149,9 +157,9 @@ rule hisat2_index:
         "-p {threads}"
 
 
-#######################
-# RNA-seq read trimming
-#######################
+#########################
+# RNA-seq read trimming #
+#########################
 rule fastp:
     input:
         get_fastq
@@ -181,19 +189,19 @@ rule fastp:
         "2>{log.log_file}"
         
 
-#########################
-# RNA-Seq read alignement
-#########################
+###########################
+# RNA-Seq read alignement #
+###########################
 rule hisat2_samtools:
     input:
-        genome_index    = expand("{index}/GRCm39_index.{n}.ht2", index = config["refs"]["index"], n = range(1, 9)),
+        genome_index    = rules.hisat2_index.output.genome_index,
+        splice_sites    = rules.hisat2_index.output.splice_sites,
         fastp_json      = WORKING_DIR + "fastp/{SRR}_fastp.json"
     output:
         bam     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam",
         log     = RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out"
     params:
         hisat2_input_file_names =  get_hisat2_names,
-        splice_sites = config["refs"]["splice_sites"]
     message:
         "Mapping {wildcards.SRR} reads to genome"
     threads: 7
@@ -202,21 +210,21 @@ rule hisat2_samtools:
         "{params.hisat2_input_file_names} "
         "2> {output.log} "
         "-p {threads} "
-        "--known-splicesite-infile {params.splice_sites} "
+        "--known-splicesite-infile {input.splice_sites} "
         "--new-summary "
         "| samtools sort -o {output.bam}"
 
-##################################
-# Produce table of raw gene counts
-##################################
+####################################
+# Produce table of raw gene counts #
+####################################
 rule featureCounts:
     input:
         bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES),
         gtf     = config["refs"]["gtf"]
     output:
-        RESULT_DIR + "feature_counts_table.tsv",
+        RESULT_DIR + "featureCounts/feature_counts_table.tsv",
     message: "Producing the table of raw counts (counting read multimappers)"
-    threads: 12
+    threads: 14
     shell:
         "featureCounts -T {threads} "
         "-s 0 "
@@ -228,21 +236,21 @@ rule featureCounts:
         "-p {input.bams}"
 
 
-#################
-# MultiQC report
-#################
+##################
+# MultiQC report #
+##################
 rule multiqc:
     input:
         fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
         hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES),
-        feature_counts  = RESULT_DIR + "feature_counts_table.tsv"
+        feature_counts  = rules.featureCounts.output
     output:
         RESULT_DIR + "multiqc_report.html"
     params:
         fastp_directory         = WORKING_DIR + "fastp/",
         hisat2_directory        = RESULT_DIR + "hisat2_aligned/",
         feature_counts_input    = RESULT_DIR + "feature_counts_table.tsv.summary",
-        outdir                  = RESULT_DIR
+        outdir                  = RESULT_DIR + "MultiQC/"
     message: "Summarising fastp, hisat2 and featureCounts reports with multiqc"
     shell:
         "multiqc --force "
@@ -255,27 +263,12 @@ rule multiqc:
         "--module featureCounts"   
 
 
-#########################################
-# Produce table of normalised gene counts
-#########################################
-rule DESeq2:
-    input:
-        raw       = RESULT_DIR + "feature_counts_table.tsv",
-        metadata  = config["samples"]
+#############################################
+# Alternative splicing analysis using rMATS #
+#############################################       
+rule rMATS:
     output:
-        output_dir = directory(RESULT_DIR + "DESeq2_output/")
-    message:
-        "Running DESeq2"
-    shell:
-        "mkdir -p {RESULT_DIR}DESeq2_output; "
-        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.output_dir}"
-        
-        
-rule rmats:
-    input: 
-        bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
-    output:
-        rmats_output = directory(RESULT_DIR + "rMATS_output")
+        rmats_output = RESULT_DIR + "rMATS_output/summary.txt"
     params:
         read_length = config["rmats"]["read_length"],
         FDR_cutoff  = config["rmats"]["FDR_cutoff"],
@@ -284,7 +277,7 @@ rule rmats:
         inputs      = rmart_inputs(samplefile),
         rmats_exe   = config["rmats"]['rmats_executable'],
         temp_output = RESULT_DIR + "rMATS_output/tmp/"
-    threads: 7
+    threads: 14
     message: "Running rMATS"
     shell:
         "mkdir -p {output.rmats_output}; "
@@ -298,3 +291,41 @@ rule rmats:
         "--cstat {params.FDR_cutoff} "
         "--od {output.rmats_output} "
         "--tmp {params.temp_output}"
+
+
+###########################################
+# Produce table of normalised gene counts #
+###########################################
+rule DESeq2:
+    input:
+        raw       = RESULT_DIR + "feature_counts_table.tsv",
+        metadata  = config["samples"]
+    output:
+        neuron_dge  = RESULT_DIR + "DESeq2_output/neuron_dge.csv",
+        muscle_dge  = RESULT_DIR + "DESeq2_output/muscle_dge.csv",
+        fpkm_values = RESULT_DIR + "DESeq2_output/fpkm_values.csv",
+        DESeq2_dds  = RESULT_DIR + "DESeq2_output/DESeq2_output.rds",
+        output_dir  = directory(RESULT_DIR + "DESeq2_output/")
+    message:
+        "Running DESeq2"
+    shell:
+        "mkdir -p {RESULT_DIR}DESeq2_output; "
+        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.output_dir}"
+
+
+###############
+# GO analysis # 
+###############
+rule GOanalysis:
+    input:
+        neuronal_dge = rules.DESeq2.output.neuron_dge,
+        muscular_dge = rules.DESeq2.output.muscle_dge
+    output:
+        ego_neuron  = RESULT_DIR + "GO_term_analysis/ego_neuron.csv",
+        ego_muscle  = RESULT_DIR + "GO_term_analysis/ego_muscle.csv",
+        output_dir  = RESULT_DIR + "GO_term_analysis"
+    message:
+        "Running GO_analysis"
+    shell:
+        "mkdir -p {output.output_dir}; "
+        "Rscript --vanilla scripts/GO_analysis {input.neuronal_dge} {input.muscular_dge} {output.output_dir}"

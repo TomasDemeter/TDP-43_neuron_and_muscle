@@ -449,7 +449,7 @@ neurons_dge <- dge_full[[1]]
 muscle_dge <- dge_full[[2]]
 
 neurons_dge$ensembl_id <- rownames(neurons_dge)
-write.csv(neurons_dge, file = paste0(output_folder, "/neurons_dge.csv"), row.names = FALSE)
+write.csv(neurons_dge, file = paste0(output_folder, "/neuron_dge.csv"), row.names = FALSE)
 
 muscle_dge$ensembl_id <- rownames(muscle_dge)
 write.csv(muscle_dge, file = paste0(output_folder, "/muscle_dge.csv"), row.names = FALSE)

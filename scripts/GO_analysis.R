@@ -7,11 +7,14 @@ library(enrichplot)
 library(dplyr)
 library(tidyr)
 
-input_path <- "results/DESeq2_output/"
-output_folder <- "results/GO_term_analysis"
+#input_path <- "results/DESeq2_output/"
+#output_folder <- "results/GO_term_analysis"
+neuron_genes_filepath <- args[1]
+muscle_genes_filepath <- args[2]
+output_folder <- args[3] #"results/GO_term_analysis"
 
-neuron_genes <- read.csv(paste0(input_path, "neurons_dge.csv"))
-muscle_genes <- read.csv(paste0(input_path, "muscle_dge.csv"))
+neuron_genes <- read.csv(neuron_genes_filepath)
+muscle_genes <- read.csv(muscle_genes_filepath)
 
 
 ################################################
