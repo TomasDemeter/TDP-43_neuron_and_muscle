@@ -25,6 +25,7 @@ fastp:
 
   # rmats
 rmats:
+  output_dir: "results/rMATS_output"
   rmats_executable: "/home/tomasd/miniconda3/envs/RNAseqR/rMATS/rmats.py" 
   read_length: 150
   FDR_cutoff: 0.01

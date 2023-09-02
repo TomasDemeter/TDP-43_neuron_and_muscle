@@ -24,7 +24,7 @@ samplefile  = config["samples"]
 # Samples and conditions #
 ##########################
 # create lists containing the sample names and conditions
-samples = pd.read_csv(config["samples"], dtype = str, index_col = 0)
+samples = pd.read_csv(samplefile, dtype = str, index_col = 0)
 SAMPLES = samples.index.tolist()
 
 
@@ -85,26 +85,38 @@ def get_hisat2_names(wildcards):
         return "-1 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R1_trimmed.fq.gz" + " -2 " + WORKING_DIR + "trimmed/" + wildcards.SRR + "_R2_trimmed.fq.gz"
 
 
-def rmart_inputs(samplefile):
-    snakemake_file = pd.read_csv(samplefile)
-    bam_files = glob.glob(os.path.abspath(RESULT_DIR + "hisat2_aligned/*.bam"))
-    
-    controls = [snakemake_file.iloc[i, 0] for i, j in enumerate(snakemake_file.treatment) if "control" in j.lower()]
-    experiments = [snakemake_file.iloc[i, 0] for i, j in enumerate(snakemake_file.treatment) if "control" not in j.lower()]
-    
-    control_bams = [i for i in bam_files if any(c in i for c in controls)]
-    experiments_bams = [i for i in bam_files if any(c in i for c in experiments)]
-    
-    controls_txt_path = os.path.abspath(RESULT_DIR + 'hisat2_aligned/control_bams.txt')
-    experiments_txt_path = os.path.abspath(RESULT_DIR + 'hisat2_aligned/experiments_bams.txt')
+def rMATS_inputs():
+    samples = pd.read_csv(samplefile)
+    bam_files = glob.glob(os.path.abspath("results/hisat2_aligned/*.bam"))
 
-    with open(controls_txt_path, 'w') as f:
-        f.write(','.join(control_bams))
+    # replace values in treatment column
+    for i in samples.treatment:
+        if "control" in i.lower():
+            samples.treatment = samples.treatment.replace(i, "control")
+        else:
+            samples.treatment = samples.treatment.replace(i, "experimental")
+            
+    # create a dictionary with treatment and cell type as keys and SRR numbers as values
+    d = {f"{treatment}_{cell_type}": [] for treatment, cell_type in samples[['treatment', 'cell type']].drop_duplicates().itertuples(index=False)}
     
-    with open(experiments_txt_path, 'w') as f:
-        f.write(','.join(experiments_bams))
+    # map SRR numbers to bam file paths
+    for treatment, cell_type, srr in samples[['treatment', 'cell type', 'SRR']].itertuples(index=False):
+        d[f"{treatment}_{cell_type}"].append(srr)
+    srr_to_bam = {bam.split('/')[-1].split('_')[0]: bam for bam in bam_files}
+
+    # Replace the values in group_dict with the corresponding bam file paths
+    for key, value in d.items():
+        d[key] = [srr_to_bam[srr] for srr in value]
         
-    return "--b1 " + controls_txt_path + " --b2 " + experiments_txt_path
+    srr_to_bam = {bam.split('/')[-1].split('_')[0]: bam for bam in bam_files}
+    
+    # create txt files
+    os.makedirs("./results/rMATS_output", exist_ok=True)
+    for key, values in d.items():
+        with open(f"./results/rMATS_output/{key}.txt", "w") as f:
+            for value in values:
+                f.write(value + ',')
+
 
 ###################
 # Desired outputs #
@@ -112,7 +124,9 @@ def rmart_inputs(samplefile):
 BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MULTIQC     = RESULT_DIR + "MultiQC/multiqc_report.html"
 COUNTS      = RESULT_DIR + "featureCounts/feature_counts_table.tsv"
-RMATS       = RESULT_DIR + "rMATS_output/summary.txt"
+RMATS_N     = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt"
+RMATS_M     = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt"
+RMATS_BAMS  = RESULT_DIR + "rMATS_output/control_C2C12.txt"
 DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
 GO_ANALYSIS = RESULT_DIR + "GO_term_analysis/"
 
@@ -124,7 +138,8 @@ rule all:
         BAM_FILES,
         COUNTS,
         MULTIQC,
-        RMATS,
+        RMATS_N,
+        RMATS_M,
         DESEQ,
         GO_ANALYSIS
     message:
@@ -261,26 +276,45 @@ rule multiqc:
         "--module featureCounts"   
 
 
+#################################### 
+# Generating input files for rMATS #
+####################################    
+rule rMATS_inputs:
+    output:
+        rmats_output_dir            = directory(config["rmats"]["output_dir"]),
+        experimental_NSC34_paths    = RESULT_DIR + "rMATS_output/experimental_NSC34.txt",
+        control_NSC34_paths         = RESULT_DIR + "rMATS_output/control_NSC34.txt",
+        experimental_C2C12_paths    = RESULT_DIR + "rMATS_output/experimental_C2C12.txt",
+        control_C2C12_paths         = RESULT_DIR + "rMATS_output/control_C2C12.txt"
+    message: "Generating bam txt files with bam paths"
+    run:
+        rMATS_inputs()
+
+
 ############################################# 
 # Alternative splicing analysis using rMATS #
-#############################################       
-rule rMATS:
+#############################################
+# Neurons       
+rule rMATS_neuron:
+    input:
+        NSC34_experimental_paths = rules.rMATS_inputs.output.experimental_NSC34_paths,
+        NSC34_control_paths = rules.rMATS_inputs.output.control_NSC34_paths
     output:
-        rmats_summary = RESULT_DIR + "rMATS_output/summary.txt"
+        rmats_summary = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt"
     params:
         read_length         = config["rmats"]["read_length"],
         FDR_cutoff          = config["rmats"]["FDR_cutoff"],
         read_type           = config["rmats"]["read_type"],
         gtf_file            = config["refs"]["gtf"],
-        inputs              = rmart_inputs(samplefile),
         rmats_exe           = config["rmats"]['rmats_executable'],
-        rmats_output_dir    = RESULT_DIR + "rMATS_output",
-        temp_output_dir     = RESULT_DIR + "rMATS_output/tmp/"
+        rmats_output_dir    = RESULT_DIR + "rMATS_output/rMATS_neuron",
+        temp_output_dir     = RESULT_DIR + "rMATS_output/rMATS_neuron/tmp/"
     threads: 14
-    message: "Running rMATS"
+    message: "Running rMATS on neuronal cells"
     shell:
         "{params.rmats_exe} "
-        "{params.inputs} "
+        "--b1 {input.NSC34_experimental_paths} "
+        "--b2 {input.NSC34_control_paths} "
         "--gtf {params.gtf_file} "
         "-t {params.read_type} "
         "--nthread {threads} "
@@ -289,6 +323,34 @@ rule rMATS:
         "--od {params.rmats_output_dir} "
         "--tmp {params.temp_output_dir}"
 
+# Muscle cells
+rule rMATS_muscle:
+    input:
+        C2C12_experimental_paths = rules.rMATS_inputs.output.experimental_C2C12_paths,
+        C2C12_control_paths = rules.rMATS_inputs.output.control_C2C12_paths
+    output:
+        rmats_summary = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt"
+    params:
+        read_length         = config["rmats"]["read_length"],
+        FDR_cutoff          = config["rmats"]["FDR_cutoff"],
+        read_type           = config["rmats"]["read_type"],
+        gtf_file            = config["refs"]["gtf"],
+        rmats_exe           = config["rmats"]['rmats_executable'],
+        rmats_output_dir    = RESULT_DIR + "rMATS_output/rMATS_muscle",
+        temp_output_dir     = RESULT_DIR + "rMATS_output/rMATS_muscle/tmp/"
+    threads: 14
+    message: "Running rMATS on muscle cells"
+    shell:
+        "{params.rmats_exe} "
+        "--b1 {input.C2C12_experimental_paths} "
+        "--b2 {input.C2C12_control_paths} "
+        "--gtf {params.gtf_file} "
+        "-t {params.read_type} "
+        "--nthread {threads} "
+        "--readLength {params.read_length} "
+        "--cstat {params.FDR_cutoff} "
+        "--od {params.rmats_output_dir} "
+        "--tmp {params.temp_output_dir}"
 
 ###########################################
 # Produce table of normalised gene counts #
