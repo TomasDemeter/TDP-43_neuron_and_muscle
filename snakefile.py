@@ -112,7 +112,7 @@ def rmart_inputs(samplefile):
 BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
 MULTIQC     = RESULT_DIR + "MultiQC/multiqc_report.html"
 COUNTS      = RESULT_DIR + "featureCounts/feature_counts_table.tsv"
-RMATS       = RESULT_DIR + "rMATS_output/"
+RMATS       = RESULT_DIR + "rMATS_output/summary.txt"
 DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
 GO_ANALYSIS = RESULT_DIR + "GO_term_analysis/"
 
@@ -261,24 +261,24 @@ rule multiqc:
         "--module featureCounts"   
 
 
-#############################################
+############################################# 
 # Alternative splicing analysis using rMATS #
 #############################################       
 rule rMATS:
     output:
-        rmats_output = directory(RESULT_DIR + "rMATS_output/") #try summary.txt later
+        rmats_summary = RESULT_DIR + "rMATS_output/summary.txt"
     params:
-        read_length = config["rmats"]["read_length"],
-        FDR_cutoff  = config["rmats"]["FDR_cutoff"],
-        read_type   = config["rmats"]["read_type"],
-        gtf_file    = config["refs"]["gtf"],
-        inputs      = rmart_inputs(samplefile),
-        rmats_exe   = config["rmats"]['rmats_executable'],
-        temp_output = RESULT_DIR + "rMATS_output/tmp/"
+        read_length         = config["rmats"]["read_length"],
+        FDR_cutoff          = config["rmats"]["FDR_cutoff"],
+        read_type           = config["rmats"]["read_type"],
+        gtf_file            = config["refs"]["gtf"],
+        inputs              = rmart_inputs(samplefile),
+        rmats_exe           = config["rmats"]['rmats_executable'],
+        rmats_output_dir    = RESULT_DIR + "rMATS_output",
+        temp_output_dir     = RESULT_DIR + "rMATS_output/tmp/"
     threads: 14
     message: "Running rMATS"
     shell:
-        "mkdir -p {output.rmats_output}; "
         "{params.rmats_exe} "
         "{params.inputs} "
         "--gtf {params.gtf_file} "
@@ -286,8 +286,8 @@ rule rMATS:
         "--nthread {threads} "
         "--readLength {params.read_length} "
         "--cstat {params.FDR_cutoff} "
-        "--od {output.rmats_output} "
-        "--tmp {params.temp_output}"
+        "--od {params.rmats_output_dir} "
+        "--tmp {params.temp_output_dir}"
 
 
 ###########################################
