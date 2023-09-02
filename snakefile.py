@@ -99,12 +99,10 @@ def rmart_inputs(samplefile):
     experiments_txt_path = os.path.abspath(RESULT_DIR + 'hisat2_aligned/experiments_bams.txt')
 
     with open(controls_txt_path, 'w') as f:
-        for item in control_bams:
-            f.write(f'{item}\n')
+        f.write(','.join(control_bams))
     
     with open(experiments_txt_path, 'w') as f:
-        for item in experiments_bams:
-            f.write(f'{item}\n')
+        f.write(','.join(experiments_bams))
         
     return "--b1 " + controls_txt_path + " --b2 " + experiments_txt_path
 
@@ -112,9 +110,9 @@ def rmart_inputs(samplefile):
 # Desired outputs #
 ###################
 BAM_FILES   = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES)
-MULTIQC     = RESULT_DIR + "multiqc_report.html"
+MULTIQC     = RESULT_DIR + "MultiQC/multiqc_report.html"
 COUNTS      = RESULT_DIR + "featureCounts/feature_counts_table.tsv"
-RMATS       = RESULT_DIR + "rMATS_output/summary.txt"
+RMATS       = RESULT_DIR + "rMATS_output/"
 DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
 GO_ANALYSIS = RESULT_DIR + "GO_term_analysis/"
 
@@ -222,7 +220,7 @@ rule featureCounts:
         bams    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Aligned.sortedByCoord.out.bam", SRR = SAMPLES),
         gtf     = config["refs"]["gtf"]
     output:
-        RESULT_DIR + "featureCounts/feature_counts_table.tsv",
+        raw_feature_couts = RESULT_DIR + "featureCounts/feature_counts_table.tsv",
     message: "Producing the table of raw counts (counting read multimappers)"
     threads: 14
     shell:
@@ -243,13 +241,13 @@ rule multiqc:
     input:
         fastp_input     = expand(WORKING_DIR + "fastp/{SRR}_fastp.json", SRR = SAMPLES),
         hisat2_input    = expand(RESULT_DIR + "hisat2_aligned/{SRR}_fastp_Log.final.out", SRR = SAMPLES),
-        feature_counts  = rules.featureCounts.output
+        feature_counts  = rules.featureCounts.output.raw_feature_couts
     output:
-        RESULT_DIR + "multiqc_report.html"
+        RESULT_DIR + "MultiQC/multiqc_report.html"
     params:
         fastp_directory         = WORKING_DIR + "fastp/",
         hisat2_directory        = RESULT_DIR + "hisat2_aligned/",
-        feature_counts_input    = RESULT_DIR + "feature_counts_table.tsv.summary",
+        feature_counts_input    = RESULT_DIR + "featureCounts/feature_counts_table.tsv.summary",
         outdir                  = RESULT_DIR + "MultiQC/"
     message: "Summarising fastp, hisat2 and featureCounts reports with multiqc"
     shell:
@@ -268,7 +266,7 @@ rule multiqc:
 #############################################       
 rule rMATS:
     output:
-        rmats_output = RESULT_DIR + "rMATS_output/summary.txt"
+        rmats_output = directory(RESULT_DIR + "rMATS_output/") #try summary.txt later
     params:
         read_length = config["rmats"]["read_length"],
         FDR_cutoff  = config["rmats"]["FDR_cutoff"],
@@ -281,7 +279,6 @@ rule rMATS:
     message: "Running rMATS"
     shell:
         "mkdir -p {output.rmats_output}; "
-        "mkdir -p {params.temp_output}; "
         "{params.rmats_exe} "
         "{params.inputs} "
         "--gtf {params.gtf_file} "
