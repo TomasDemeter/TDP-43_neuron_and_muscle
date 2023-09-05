@@ -1,6 +1,7 @@
 library(ggplot2)
 library(ggVennDiagram)
 library(dplyr)
+library(tidyr)
 
 ########################
 # Inputs/ output paths # 
@@ -48,12 +49,19 @@ splicing_events <- function(cell_path, AS) {
 
     path <- paste0(cell_path, AS, ".MATS.JCEC.txt")
     file <- read.csv(path, sep = "\t")
-    file <- filter(file, FDR <= 0.01)
-
+    file <- filter(file, FDR < 0.01)
     return(file)
 }
 
-bar_chart_data <- function(cell_line_1, cell_line_2, i, cell_line_1_name, cell_line_2_name) {
+
+get_transcripts <- function(df, col_names) {
+    df %>%
+        unite(col = "transcript", col_names, sep = "_") %>%
+        pull(transcript)
+}
+
+
+horizontal_bar_chart_data <- function(cell_line_1, cell_line_2, i, cell_line_1_name, cell_line_2_name) {
 
     cell_line_1_length <- length(cell_line_1$GeneID)
     cell_line_2_length <- length(cell_line_2$GeneID)
@@ -68,11 +76,11 @@ bar_chart_data <- function(cell_line_1, cell_line_2, i, cell_line_1_name, cell_l
     data <- data %>%
         group_by(Splice_type) %>%
         mutate(Percentage_common = round(sum(Count[Category == 'common']) / sum(Count[Category != 'common']) * 100, 1))
-
     return(data)
 }
 
-horizontal_plot <- function(plotting_data) {
+
+horizontal_bar_plotting <- function(plotting_data) {
     ggplot(plotting_data, aes(x = Splice_type, y = Count, fill = Category)) +
         geom_bar(stat = "identity", width = 0.9, color = "black", linewidth = 0.5) +
         coord_flip() +
@@ -82,9 +90,9 @@ horizontal_plot <- function(plotting_data) {
         nature_theme() +
         scale_fill_manual(values = c("#688b68", "#89a164", "#cb940a")) +
         geom_text(data = plotting_data[!duplicated(plotting_data$Splice_type),], 
-                    aes(label = paste0(Percentage_common,"%")), size = 7, hjust = -4)
-
+                    aes(label = paste0(Percentage_common,"%")), size = 7, hjust = -3)
 }
+
 
 AS_venn <- function(transcript_sets, title) {
     venn <- Venn(transcript_sets)
@@ -130,7 +138,6 @@ AS_venn <- function(transcript_sets, title) {
             ) +
         ggtitle(plot_title) +
         theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
-
     return(dge_venn)
 }
 
@@ -139,53 +146,110 @@ AS_venn <- function(transcript_sets, title) {
 # Analysis # 
 ############
 # filtering rMATS results by FDR <= 0.01
-filtered_df_list <- list()
+neuron_df_list <- list()
+muscle_df_list <- list()
+
 for (i in AS_events_types){
-    neuron <- splicing_events(neuron_as_path, i)
-    muscle <- splicing_events(muscle_as_path, i)
-    tmp_list <- c(list(muscle), list(neuron))
-    filtered_df_list <- c(filtered_df_list, tmp_list)
+    tmp <- splicing_events(neuron_as_path, i)
+    neuron_df_list <- c(neuron_df_list, list(tmp))
+}
+names(neuron_df_list) <- c("SE_neuron", "MXE_neuron", "RI_neuron", "A3SS_neuron", "A5SS_neuron")
+
+for (i in AS_events_types){
+    tmp <- splicing_events(muscle_as_path, i)
+    muscle_df_list <- c(muscle_df_list, list(tmp))
+}
+names(muscle_df_list) <- c("SE_muscle", "MXE_muscle", "RI_muscle", "A3SS_muscle", "A5SS_muscle")
+
+
+
+## VENN DIAGRAM OF TRANSCRIPTS ##
+SE_columns <- c("GeneID", "exonStart_0base",  "exonEnd", "upstreamES", "upstreamEE", "downstreamES", "downstreamEE")
+SE_neuron_transcript <- get_transcripts(neuron_df_list$SE_neuron, SE_columns)
+SE_muscle_transcript <- get_transcripts(muscle_df_list$SE_muscle, SE_columns)
+
+MXE_columns <- c("GeneID", "X1stExonStart_0base", "X1stExonEnd", "X2ndExonStart_0base", "X2ndExonEnd", "upstreamES", "upstreamEE", "downstreamES", "downstreamEE")
+MXE_neuron_transcript <- get_transcripts(neuron_df_list$MXE_neuron, MXE_columns)
+MXE_muscle_transcript <- get_transcripts(muscle_df_list$MXE_muscle, MXE_columns)
+
+RI_columns <- c("GeneID", "riExonStart_0base", "riExonEnd", "upstreamES", "upstreamEE", "downstreamES", "downstreamEE")
+RI_neuron_transcript <- get_transcripts(neuron_df_list$RI_neuron, RI_columns)
+RI_muscle_transcript <- get_transcripts(muscle_df_list$RI_muscle, RI_columns)
+
+A3SS_columns <- c("GeneID", "longExonStart_0base", "longExonEnd",   "shortES",   "shortEE", "flankingES", "flankingEE")
+A3SS_neuron_transcript <- get_transcripts(neuron_df_list$A3SS_neuron, A3SS_columns)
+A3SS_muscle_transcript <- get_transcripts(muscle_df_list$A3SS_muscle, A3SS_columns)
+
+A5SS_columns <- c("GeneID", "longExonStart_0base", "longExonEnd",   "shortES",   "shortEE", "flankingES", "flankingEE")
+A5SS_neuron_transcript <- get_transcripts(neuron_df_list$A5SS_neuron, A5SS_columns)
+A5SS_muscle_transcript <- get_transcripts(muscle_df_list$A5SS_muscle, A5SS_columns)
+
+# preparing list of alternatively spliced transcripts 
+AS_transcripts_neuron <- as.vector(c(SE_neuron_transcript, MXE_neuron_transcript, RI_neuron_transcript, A3SS_neuron_transcript, A5SS_neuron_transcript))
+AS_transcript_muscle <- as.vector(c(SE_muscle_transcript, MXE_muscle_transcript, RI_muscle_transcript, A3SS_muscle_transcript, A5SS_muscle_transcript))
+AS_transcripts <- list(AS_transcript_muscle, AS_transcripts_neuron)
+
+#  plotting venn diagram of alternatively spliced genes
+AS_transcripts_venn <- AS_venn(AS_transcripts, "AS events rMATS")
+
+
+
+## VENN DIAGRAM OF GENES ##
+# preparing list of alternatively spliced genes
+AS_genes_neurons <- c()
+for (i in neuron_df_list){
+    tmp <- i$GeneID
+    AS_genes_neurons <- c(AS_genes_neurons, tmp)
 }
 
+AS_genes_muscle <- c()
+for (i in muscle_df_list){
+    tmp <- i$GeneID
+    AS_genes_muscle <- c(AS_genes_muscle, tmp)
+}
 
-# create df for plotting horizontal bar chart
+AS_genes <- list(AS_genes_muscle, AS_genes_neurons)
+
+#  plotting venn diagram of alternatively spliced genes
+AS_genes_venn <- AS_venn(AS_genes, "AS Genes")
+
+
+
+## BAR CHART OF TRANSCRIPTS ##
+# generating data frame for horizontal bar of different alternative splicing events types
 plotting_df <- data.frame()
 for (k in seq_along(AS_events_types)) {
     i <- AS_events_types[k]
-    j <- seq(1, length(filtered_df_list), by = 2)[k]
-    tmp_df <- bar_chart_data(filtered_df_list[[j]], filtered_df_list[[j + 1]], i, "C2C12-specific",  "NSC34-specific")
+    tmp_df <- horizontal_bar_chart_data(neuron_df_list[[k]], muscle_df_list[[k]], i, "C2C12-specific",  "NSC34-specific")
     plotting_df <- rbind(plotting_df, tmp_df)
 }
+
 plotting_df$Splice_type <- factor(plotting_df$Splice_type, levels = rev(AS_events_types))
 plotting_df$Category <- factor(plotting_df$Category, levels = c("C2C12-specific", "common", "NSC34-specific"))
 
-
-# plots splicing event counts and save it into output folder
-bar_plot <- horizontal_plot(plotting_df)
-
+# plots splicing event counts 
+bar_plot <- horizontal_bar_plotting(plotting_df)
 
 
-#this goes into a function to prepare data for venn diagram
-muscle_gene_ids <- c()
-for (i in seq(1, length(filtered_df_list), by = 2)) {
-    muscle_gene_ids <- c(muscle_gene_ids, filtered_df_list[[i]]$GeneID)
-}
 
-neuron_gene_ids <- c()
-for (i in seq(2, length(filtered_df_list), by = 2)) {
-    neuron_gene_ids <- c(neuron_gene_ids, filtered_df_list[[i]]$GeneID)
-}
-
-
-transcript_sets <- list(muscle_gene_ids, neuron_gene_ids)
-venn_diagram_rMATS <- AS_venn(transcript_sets, "AS events rMATS")
-venn_diagram_rMATS
-
-
+##################
+# Saving results #
+##################
 # create directory for saving results
 dir.create(output_dir)
 
+# saving neurons data frames
+
+for (name in names(neuron_df_list)) {
+    write.csv(neuron_df_list[[name]], file = paste0(output_dir, name, ".csv"), row.names = FALSE)
+}
+
+# saving muscle cell data frames
+for (name in names(muscle_df_list)) {
+    write.csv(muscle_df_list[[name]], file = paste0(output_dir, name, ".csv"), row.names = FALSE)
+}
+
 # saving figures 
 ggsave(filename = paste0(output_dir, "splicing_horizontal_bar_plot.png"), plot = bar_plot)
-ggsave(filename = paste0(output_dir, "venn_diagram_rMATS.png"), plot = venn_diagram_rMATS)
-
+ggsave(filename = paste0(output_dir, "AS_transcripts_venn.png"), plot = AS_transcripts_venn)
+ggsave(filename = paste0(output_dir, "AS_genes_venn.png"), plot = AS_genes_venn)
