@@ -14,8 +14,8 @@ neuron_genes_filepath <- args[1]
 muscle_genes_filepath <- args[2]
 output_folder <- args[3] #"results/GO_term_analysis"
 
-neuron_genes <- read.csv(neuron_genes_filepath)
-muscle_genes <- read.csv(muscle_genes_filepath)
+neuron_genes <- read.csv("results/DESeq2_output/neuron_dge.csv")
+muscle_genes <- read.csv("results/DESeq2_output/muscle_dge.csv")
 
 
 ################################################
@@ -103,7 +103,7 @@ EGO_venn <- function(ego1, ego2, ego1_name, ego2_name, title) {
     dge_venn <- ggplot() +
         # 1. region count layer
         geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
-        scale_fill_manual(values = fill_colors, guide = FALSE) +
+        scale_fill_manual(values = fill_colors, guide = "none") +
         # 2. set edge layer
         geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
         # 3. set label layer
@@ -159,6 +159,44 @@ EGO_terms <- function (ego1, ego2, ego1_name, ego2_name) {
 }
 
 
+ensembl_IDs_AS <- function(path, pattern) {
+    files <- list.files(path = path, pattern = paste0(pattern, "$"))
+    full_file_paths <- file.path(path, files)
+    geneid_data_list <- lapply(full_file_paths, function(x) read.csv(x)["GeneID"])
+    data_combined <- do.call(rbind, geneid_data_list)
+    colnames(data_combined)[1] <- "ensembl_id"
+    return(data_combined)
+}
+
+
+get_go_terms <- function(cell_type, keywords, group) {
+    keywords_pattern <- paste0(keywords, collapse = "|")
+    go_terms <- cell_type %>%
+                dplyr::filter(str_detect(Description, keywords_pattern)) %>%
+                dplyr::filter(-log(p.adjust, base = 10) > 1) %>%
+                dplyr::select(Description, p.adjust) %>%
+                mutate(GO_group = group)
+    return(go_terms)
+}
+
+
+get_go_df <- function(cell_type, keywords_list) {
+    combined_df <- data.frame()
+    for (i in seq_along(keywords_list)) {
+        tmp_keywords <- get_go_terms(cell_type, keywords_list[[i]], names(keywords_list)[[i]])
+        combined_df <- rbind(combined_df, tmp_keywords)
+    }
+    
+    description_order <- as.vector(combined_df$Description)
+    GO_order <- unique(as.vector(combined_df$GO_group))
+    
+    combined_df$Description <- factor(combined_df$Description, levels = rev(description_order))
+    combined_df$GO_group <- factor(combined_df$GO_group, levels = GO_order)
+    
+    return(combined_df)
+}
+
+
 ########################
 ########################
 # Running the analysis #
@@ -172,6 +210,68 @@ ego_muscle <- go_term_analysis(muscle_genes)
 # plotting the resutls
 ego_venn_plot <- EGO_venn(ego_muscle, ego_neuron, "C2C12", "NSC34", "GO terms")
 ego_terms_plot <- EGO_terms(ego_muscle, ego_neuron, "C2C12", "NSC34") # different pathways compared to the paper but still related to neurodegeneration
+
+
+#_____________________________________________________________________________________________________________________________________________
+# getting files from alternative splicing analysis
+AS_path <- "./results/AS_analysis_output/"
+neuron_data_combined <- ensembl_IDs_AS(AS_path, "_neuron.csv")
+muscle_data_combined <- ensembl_IDs_AS(AS_path, "_muscle.csv")
+
+# getting GO terms of alternatively spliced genes
+AS_go_neuron <- go_term_analysis(neuron_data_combined)
+AS_go_muscle <- go_term_analysis(muscle_data_combined)
+
+# plotting GO terms of alternatively spliced genes
+go_venn_plot <- EGO_venn(AS_go_muscle, AS_go_neuron, "C2C12", "NSC34", "GO terms of AS genes")
+
+# extracting cell type specific GO terms
+AS_go_neuron_unique <- anti_join(as.data.frame(AS_go_neuron), as.data.frame(AS_go_muscle), by = "Description")
+AS_go_muscle_unique <- anti_join(as.data.frame(AS_go_muscle), as.data.frame(AS_go_neuron), by = "Description")
+
+# defining keywords for GO term clustering and saving them all in a list
+neuron_keywords <- list("neuron", "synapse", "synaptic", "dendritic", "axonogenesis", "neurogenesis", "postsynapse", "nervous", "neurotransmitter")
+RNA_keywords <- list("RNA", "tRNA", "ncRNA", "mRNA", "ribonucleoprotein")
+DNA_keywords <- list("DNA", "telomerase", "chromosome", "histone", "chromatin")
+muscle_keywords <- list("muscle")
+
+keywords_list <- list(neuron_keywords,
+                    RNA_keywords,
+                    DNA_keywords,
+                    muscle_keywords)
+
+names(keywords_list) <- c("neuron", "RNA metabolism", "DNA", "muscle")
+
+# preparing data frames for plotting of a horizontal bar chart of GO terms
+neuronal_go <- get_go_df(AS_go_neuron_unique, keywords_list)
+muscle_go <- get_go_df(AS_go_muscle_unique, keywords_list)
+
+# for neuronal cells I am plotting only top 15 of each category otherwise wont fit on the plot
+top15_neuronal_go <- neuronal_go %>%
+    group_by(GO_group) %>%
+    top_n(n = 15, wt = -log(p.adjust, base = 10))
+
+# plotting
+neuron_AS_GO_plot <- ggplot(top15_neuronal_go, aes(x = Description, y = -log(p.adjust, base = 10), fill = GO_group)) +
+    geom_bar(stat = "identity") +
+    xlab("") +
+    ylab("-log10(p.adj)") +
+    scale_fill_manual(values = c("#cb950e", "#496d88", "#c8919d", "#698969")) +
+    coord_flip() +
+    nature_theme()
+    
+neuron_AS_GO_plot
+
+
+muscle_AS_GO_plot <- ggplot(muscle_go, aes(x = Description, y = -log(p.adjust, base = 10), fill = GO_group)) +
+    geom_bar(stat = "identity") +
+    xlab("") +
+    ylab("-log10(p.adj)") +
+    scale_fill_manual(values = c("#cb950e", "#496d88", "#c8919d", "#698969")) +
+    coord_flip() +
+    nature_theme()
+    
+muscle_AS_GO_plot
 
 
 ######################
@@ -188,72 +288,3 @@ ggsave(filename = paste0(output_folder, "/ego_terms_plot.png"), plot = ego_terms
 write.csv(ego_neuron, file = paste0(output_folder, "/ego_neuron.csv"), row.names = FALSE)
 write.csv(ego_muscle, file = paste0(output_folder, "/ego_muscle.csv"), row.names = FALSE)
 
-
-
-
-AS_path <- "./results/AS_analysis_output"
-neuron_files <- list.files(path = AS_path, pattern = "_neuron.csv$")
-full_neuron_file_paths <- file.path(AS_path, neuron_files)
-neuron_geneid_data_list <- lapply(full_neuron_file_paths, function(x) read.csv(x)["GeneID"])
-neuron_data_combined <- do.call(rbind, neuron_geneid_data_list)
-colnames(neuron_data_combined)[1] <- "ensembl_id"
-
-muscle_files <- list.files(path = AS_path, pattern = "_muscle.csv$")
-full_muscle_file_paths <- file.path(AS_path, muscle_files)
-muscle_geneid_data_list <- lapply(full_muscle_file_paths, function(x) read.csv(x)["GeneID"])
-muscle_data_combined <- do.call(rbind, muscle_geneid_data_list)
-colnames(muscle_data_combined)[1] <- "ensembl_id"
-
-
-
-
-AS_ego_neuron <- go_term_analysis(neuron_data_combined)
-AS_ego_muscle <- go_term_analysis(muscle_data_combined)
-
-ego_venn_plot <- EGO_venn(AS_ego_muscle, AS_ego_neuron, "C2C12", "NSC34", "GO terms of AS geens")
-
-AS_ego_neuron_unique <- anti_join(as.data.frame(AS_ego_neuron), as.data.frame(AS_ego_muscle), by = "Description")
-AS_ego_muscle_unique <- anti_join(as.data.frame(AS_ego_muscle), as.data.frame(AS_ego_neuron), by = "Description")
-
-
-EGO_terms_plot <- ggplot(AS_ego_neuron_unique, aes(x = Counts, y = Description, fill = Count_Type)) +
-    geom_bar(stat = "identity", position = "dodge") +
-    labs(x = "Gene no.", y = "") +
-    nature_theme() +
-    theme(legend.position = "none")
-
-
-
-
-neuron_keywords <- list("neuron", "synapse", "synaptic", "dendritic", "axonogenesis")
-neuron_keywords_pattern <- paste0(neuron_keywords, collapse = "|")
-neuron_go_terms <- AS_ego_neuron_unique %>%
-                    dplyr::filter(str_detect(Description, neuron_keywords_pattern)) %>%
-                    dplyr::filter(-log(p.adjust, base = 10) > 2) %>%
-                    dplyr::select(Description, p.adjust) %>%
-                    mutate(GO_group = "neuron")
-
-
-
-RNA_keywords <- list("RNA", "tRNA", "ncRNA", "mRNA", "ribonucleoprotein")
-RNA_keywords_pattern <- paste0(RNA_keywords, collapse = "|")
-RNA_go_terms <- AS_ego_neuron_unique %>%
-                    dplyr::filter(str_detect(Description, RNA_keywords_pattern)) %>%
-                    dplyr::filter(-log(p.adjust, base = 10) > 1) %>%
-                    dplyr::select(Description, p.adjust) %>%
-                    mutate(GO_group = "RNA metabolism")
-
-
-
-DNA_keywords <- list("DNA")
-DNA_keywords_pattern <- paste0(DNA_keywords, collapse = "|")
-DNA_go_terms <- AS_ego_neuron_unique %>%
-                    dplyr::filter(str_detect(Description, DNA_keywords_pattern)) %>%
-                    dplyr::filter(-log(p.adjust, base = 10) > 1) %>%
-                    dplyr::select(Description, p.adjust) %>%
-                    mutate(GO_group = "DNA")
-
-
-neuron_go_df <- rbind(neuron_go_terms, RNA_go_terms, DNA_go_terms)
-
-AS_ego_neuron_unique$Description

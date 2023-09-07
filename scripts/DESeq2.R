@@ -11,7 +11,7 @@ library(ggrepel)
 # Loading the data #
 ####################
 
-#args <- commandArgs(trailingOnly = TRUE)
+args <- commandArgs(trailingOnly = TRUE)
 raw_counts_filepath <- args[1] # "results/feature_counts_table.tsv" #
 meta_data_filepath <- args[2] # "data/raw_reads/SRR_metadata.csv" #
 output_folder <-  args[3] # "results/DESeq2_output" #

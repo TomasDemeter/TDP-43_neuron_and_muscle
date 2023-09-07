@@ -303,7 +303,6 @@ rule rMATS_neuron:
         rmats_summary = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt"
     params:
         read_length         = config["rmats"]["read_length"],
-        FDR_cutoff          = config["rmats"]["FDR_cutoff"],
         read_type           = config["rmats"]["read_type"],
         gtf_file            = config["refs"]["gtf"],
         rmats_exe           = config["rmats"]['rmats_executable'],
@@ -319,7 +318,6 @@ rule rMATS_neuron:
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
-        "--cstat {params.FDR_cutoff} "
         "--od {params.rmats_output_dir} "
         "--tmp {params.temp_output_dir}"
 
@@ -332,7 +330,6 @@ rule rMATS_muscle:
         rmats_summary = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt"
     params:
         read_length         = config["rmats"]["read_length"],
-        FDR_cutoff          = config["rmats"]["FDR_cutoff"],
         read_type           = config["rmats"]["read_type"],
         gtf_file            = config["refs"]["gtf"],
         rmats_exe           = config["rmats"]['rmats_executable'],
@@ -348,7 +345,6 @@ rule rMATS_muscle:
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
-        "--cstat {params.FDR_cutoff} "
         "--od {params.rmats_output_dir} "
         "--tmp {params.temp_output_dir}"
 
@@ -357,7 +353,7 @@ rule rMATS_muscle:
 ###########################################
 rule DESeq2:
     input:
-        raw       = RESULT_DIR + "feature_counts_table.tsv",
+        raw       = RESULT_DIR + "featureCounts/feature_counts_table.tsv",
         metadata  = config["samples"]
     output:
         neuron_dge  = RESULT_DIR + "DESeq2_output/neuron_dge.csv",

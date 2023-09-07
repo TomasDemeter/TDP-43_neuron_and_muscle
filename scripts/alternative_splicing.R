@@ -86,13 +86,12 @@ horizontal_bar_plotting <- function(plotting_data) {
         coord_flip() +
         xlab("") +
         ylab("No. of events") +
-        ylim(0, 1200) +
+        ylim(0,2000) +
         nature_theme() +
         scale_fill_manual(values = c("#688b68", "#89a164", "#cb940a")) +
         geom_text(data = plotting_data[!duplicated(plotting_data$Splice_type),], 
-                    aes(label = paste0(Percentage_common,"%")), size = 7, hjust = -3)
+                    aes(label = paste0(Percentage_common,"%")), size = 7, hjust = -2, nudge_y = 600)
 }
-
 
 AS_venn <- function(transcript_sets, title) {
     venn <- Venn(transcript_sets)
@@ -229,7 +228,6 @@ plotting_df$Category <- factor(plotting_df$Category, levels = c("C2C12-specific"
 
 # plots splicing event counts 
 bar_plot <- horizontal_bar_plotting(plotting_df)
-
 
 
 ##################
