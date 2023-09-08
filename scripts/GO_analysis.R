@@ -8,15 +8,14 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 
-#input_path <- "results/DESeq2_output/"
-#output_folder <- "results/GO_term_analysis"
-neuron_genes_filepath <- args[1]
-muscle_genes_filepath <- args[2]
-output_folder <- args[3] #"results/GO_term_analysis"
+args <- commandArgs(trailingOnly = TRUE)
+DE_path <-  paste0(args[1], "/")
+AS_path <- paste0(args[2], "/")
+output_folder <- paste0(args[3], "/") 
 
-neuron_genes <- read.csv("results/DESeq2_output/neuron_dge.csv")
-muscle_genes <- read.csv("results/DESeq2_output/muscle_dge.csv")
 
+neuron_genes <- read.csv(paste0(DE_path, "neuron_DE.csv"))
+muscle_genes <- read.csv(paste0(DE_path, "muscle_DE.csv"))
 
 ################################################
 ################################################
@@ -38,8 +37,8 @@ nature_theme <- function(
             plot.background = element_rect(fill = "white", color = NA),
             panel.background = element_rect(fill = "white", color = NA),
             # Set the size and color of the axis lines and ticks
-            axis.line = element_line(size = 1, color = "black"),
-            axis.ticks = element_line(size = 1, color = "black"),
+            axis.line = element_line(linewidth  = 1, color = "black"),
+            axis.ticks = element_line(linewidth  = 1, color = "black"),
             # Set the font size and color of the axis text and title
             axis.text = element_text(size = rel(1.5), color = "#5c5a5a"),
             axis.title = element_text(size = rel(1.5), color = "black"),
@@ -100,7 +99,7 @@ EGO_venn <- function(ego1, ego2, ego1_name, ego2_name, title) {
         region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
 
     # plot the Venn diagram with the new settings
-    dge_venn <- ggplot() +
+    DE_venn <- ggplot() +
         # 1. region count layer
         geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
         scale_fill_manual(values = fill_colors, guide = "none") +
@@ -122,7 +121,7 @@ EGO_venn <- function(ego1, ego2, ego1_name, ego2_name, title) {
         ggtitle(plot_title) +
         theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
 
-    return(dge_venn)
+    return(DE_venn)
 }
 
 
@@ -157,8 +156,9 @@ EGO_terms <- function (ego1, ego2, ego1_name, ego2_name) {
         
     return(EGO_terms_plot)
 }
-
-
+#########################################################
+# preparing data with ensembl ids for GO terms download #
+#########################################################
 ensembl_IDs_AS <- function(path, pattern) {
     files <- list.files(path = path, pattern = paste0(pattern, "$"))
     full_file_paths <- file.path(path, files)
@@ -167,8 +167,9 @@ ensembl_IDs_AS <- function(path, pattern) {
     colnames(data_combined)[1] <- "ensembl_id"
     return(data_combined)
 }
-
-
+##########################################
+# extracting GO terms for df preparation #
+##########################################
 get_go_terms <- function(cell_type, keywords, group) {
     keywords_pattern <- paste0(keywords, collapse = "|")
     go_terms <- cell_type %>%
@@ -178,8 +179,9 @@ get_go_terms <- function(cell_type, keywords, group) {
                 mutate(GO_group = group)
     return(go_terms)
 }
-
-
+#############################################################
+# preparing data frame for GO terms horizontal bar plotting #
+#############################################################
 get_go_df <- function(cell_type, keywords_list) {
     combined_df <- data.frame()
     for (i in seq_along(keywords_list)) {
@@ -195,6 +197,24 @@ get_go_df <- function(cell_type, keywords_list) {
     
     return(combined_df)
 }
+########################################################################
+# generating horizontal bar of GO terms of alternatively spliced genes #
+########################################################################
+unique_GO_terms_bar <- function(go_terms_dataframe) {
+    # Create a named vector of colors
+    group_colors <- c("neuron" = "#cb950e", "RNA metabolism" = "#496d88", "DNA" = "#c8919d", "muscle" = "#698969")
+    
+    # Create the plot
+    plot <- ggplot(go_terms_dataframe, aes(x = Description, y = -log(p.adjust, base = 10), fill = GO_group)) +
+        geom_bar(stat = "identity") +
+        xlab("") +
+        ylab("-log10(p.adj)") +
+        scale_fill_manual(values = group_colors) + 
+        coord_flip() +
+        nature_theme()
+    
+    return(plot)
+}
 
 
 ########################
@@ -204,35 +224,48 @@ get_go_df <- function(cell_type, keywords_list) {
 ########################
 
 # generating results
-ego_neuron <- go_term_analysis(neuron_genes)
-ego_muscle <- go_term_analysis(muscle_genes)
+DE_go_neuron <- go_term_analysis(neuron_genes)
+DE_go_muscle <- go_term_analysis(muscle_genes)
+
 
 # plotting the resutls
-ego_venn_plot <- EGO_venn(ego_muscle, ego_neuron, "C2C12", "NSC34", "GO terms")
-ego_terms_plot <- EGO_terms(ego_muscle, ego_neuron, "C2C12", "NSC34") # different pathways compared to the paper but still related to neurodegeneration
+ego_venn_plot <- EGO_venn(DE_go_muscle, DE_go_neuron, "C2C12", "NSC34", "GO terms")
+ego_terms_plot <- EGO_terms(DE_go_muscle, DE_go_neuron, "C2C12", "NSC34") 
 
 
-#_____________________________________________________________________________________________________________________________________________
 # getting files from alternative splicing analysis
-AS_path <- "./results/AS_analysis_output/"
 neuron_data_combined <- ensembl_IDs_AS(AS_path, "_neuron.csv")
 muscle_data_combined <- ensembl_IDs_AS(AS_path, "_muscle.csv")
+
 
 # getting GO terms of alternatively spliced genes
 AS_go_neuron <- go_term_analysis(neuron_data_combined)
 AS_go_muscle <- go_term_analysis(muscle_data_combined)
 
+
 # plotting GO terms of alternatively spliced genes
 go_venn_plot <- EGO_venn(AS_go_muscle, AS_go_neuron, "C2C12", "NSC34", "GO terms of AS genes")
+
 
 # extracting cell type specific GO terms
 AS_go_neuron_unique <- anti_join(as.data.frame(AS_go_neuron), as.data.frame(AS_go_muscle), by = "Description")
 AS_go_muscle_unique <- anti_join(as.data.frame(AS_go_muscle), as.data.frame(AS_go_neuron), by = "Description")
 
+
+# Filter rows in both data frames where p.adjust > -log10(p.adjust)
+AS_go_neuron_filtered <- AS_go_neuron %>% filter(-log(p.adjust, base = 10) > 1)
+AS_go_muscle_filtered <- AS_go_muscle %>% filter(-log(p.adjust, base = 10) > 1)
+
+
+# Merge the filtered data frames
+common_go <- inner_join(as.data.frame(AS_go_neuron_filtered), as.data.frame(AS_go_muscle_filtered), by = "Description")
+common_go <- common_go %>% mutate(p.adjust = (p.adjust.x + p.adjust.y) / 2)
+
+
 # defining keywords for GO term clustering and saving them all in a list
 neuron_keywords <- list("neuron", "synapse", "synaptic", "dendritic", "axonogenesis", "neurogenesis", "postsynapse", "nervous", "neurotransmitter")
 RNA_keywords <- list("RNA", "tRNA", "ncRNA", "mRNA", "ribonucleoprotein")
-DNA_keywords <- list("DNA", "telomerase", "chromosome", "histone", "chromatin")
+DNA_keywords <- list("DNA", "telomerase", "chromosome", "histone", "chromatin", "telomere")
 muscle_keywords <- list("muscle")
 
 keywords_list <- list(neuron_keywords,
@@ -242,36 +275,24 @@ keywords_list <- list(neuron_keywords,
 
 names(keywords_list) <- c("neuron", "RNA metabolism", "DNA", "muscle")
 
+
 # preparing data frames for plotting of a horizontal bar chart of GO terms
-neuronal_go <- get_go_df(AS_go_neuron_unique, keywords_list)
-muscle_go <- get_go_df(AS_go_muscle_unique, keywords_list)
+neuronal_go_df <- get_go_df(AS_go_neuron_unique, keywords_list)
+muscle_go_df <- get_go_df(AS_go_muscle_unique, keywords_list)
+common_go_df <-  get_go_df(common_go, keywords_list)
+
 
 # for neuronal cells I am plotting only top 15 of each category otherwise wont fit on the plot
-top15_neuronal_go <- neuronal_go %>%
+top15_neuronal_go_df <- neuronal_go_df %>%
     group_by(GO_group) %>%
     top_n(n = 15, wt = -log(p.adjust, base = 10))
 
-# plotting
-neuron_AS_GO_plot <- ggplot(top15_neuronal_go, aes(x = Description, y = -log(p.adjust, base = 10), fill = GO_group)) +
-    geom_bar(stat = "identity") +
-    xlab("") +
-    ylab("-log10(p.adj)") +
-    scale_fill_manual(values = c("#cb950e", "#496d88", "#c8919d", "#698969")) +
-    coord_flip() +
-    nature_theme()
-    
-neuron_AS_GO_plot
 
+# plotting horizontal bars
+neuron_AS_GO_plot <- unique_GO_terms_bar(top15_neuronal_go_df)
+muscle_AS_GO_plot <- unique_GO_terms_bar(muscle_go_df)    
+common_AS_GO_plot <- unique_GO_terms_bar(common_go_df)
 
-muscle_AS_GO_plot <- ggplot(muscle_go, aes(x = Description, y = -log(p.adjust, base = 10), fill = GO_group)) +
-    geom_bar(stat = "identity") +
-    xlab("") +
-    ylab("-log10(p.adj)") +
-    scale_fill_manual(values = c("#cb950e", "#496d88", "#c8919d", "#698969")) +
-    coord_flip() +
-    nature_theme()
-    
-muscle_AS_GO_plot
 
 
 ######################
@@ -281,10 +302,16 @@ muscle_AS_GO_plot
 ######################
 
 # saving the figures
-ggsave(filename = paste0(output_folder, "/ego_venn_plot.png"), plot = ego_venn_plot)
-ggsave(filename = paste0(output_folder, "/ego_terms_plot.png"), plot = ego_terms_plot)
+ggsave(filename = paste0(output_folder, "/ego_venn_plot.png"), plot = ego_venn_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/ego_terms_plot.png"), plot = ego_terms_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/go_venn_plot.png"), plot = go_venn_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/neuron_AS_GO_plot.png"), plot = neuron_AS_GO_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/muscle_AS_GO_plot.png"), plot = muscle_AS_GO_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/common_AS_GO_plot.png"), plot = common_AS_GO_plot, width = 20, height = 15)
+
 
 # saving enriched GO-terms analysis
-write.csv(ego_neuron, file = paste0(output_folder, "/ego_neuron.csv"), row.names = FALSE)
-write.csv(ego_muscle, file = paste0(output_folder, "/ego_muscle.csv"), row.names = FALSE)
-
+write.csv(DE_go_neuron, file = paste0(output_folder, "/DE_go_neuron.csv"), row.names = FALSE)
+write.csv(DE_go_muscle, file = paste0(output_folder, "/DE_go_muscle.csv"), row.names = FALSE)
+write.csv(AS_go_neuron, file = paste0(output_folder, "/AS_go_neuron.csv"), row.names = FALSE)
+write.csv(AS_go_muscle, file = paste0(output_folder, "/AS_go_muscle.csv"), row.names = FALSE)

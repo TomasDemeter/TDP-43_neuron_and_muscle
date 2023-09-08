@@ -42,8 +42,8 @@ nature_theme <- function(
       panel.background = element_rect(fill = "white", color = NA),
       
       # Set the size and color of the axis lines and ticks
-      axis.line = element_line(size = 1, color = "black"),
-      axis.ticks = element_line(size = 1, color = "black"),
+      axis.line = element_line(linewidth = 1, color = "black"),
+      axis.ticks = element_line(linewidth = 1, color = "black"),
       
       # Set the font size and color of the axis text and title
       axis.text = element_text(size = rel(1.5), color = "#5c5a5a"),
@@ -266,10 +266,10 @@ DGE_venn <- function(data_list, title) {
   region_data$percentage <- paste0(round(region_data$count / total_count * 100, 1), "%")
   
   # plot the Venn diagram with the new settings
-  dge_venn <- ggplot() +
+  DE_venn <- ggplot() +
     # 1. region count layer
     geom_sf(aes(fill = id), data = region_data, alpha = 0.5) +
-    scale_fill_manual(values = fill_colors, guide = FALSE) +
+    scale_fill_manual(values = fill_colors, guide = "none") +
     # 2. set edge layer
     geom_sf(data = venn_setedge(data), show.legend = FALSE, color = NA) +
     # 3. set label layer
@@ -288,7 +288,7 @@ DGE_venn <- function(data_list, title) {
     ggtitle(plot_title) +
     theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24))
 
-  return(dge_venn)
+  return(DE_venn)
 }
 
 
@@ -407,24 +407,24 @@ pc2_tdp <- pc2_vs_gene(dds, fpkm_values, pca_res, "ENSMUSG00000041459")
 
 
 # DGE of all the genes
-dge_full <- DGE_calculation(dds)
-dge_full_venn <- DGE_venn(dge_full, "DGE")
+DE_full <- DGE_calculation(dds)
+DE_full_venn <- DGE_venn(DE_full, "DGE")
 
 # DGE of genes with fpkm > 0.5 in each sample
 keep <- rowSums(fpkm_values > 0.5) > 0
 dds_filtered <- dds[keep,]
 
-dge_filtered <- DGE_calculation(dds_filtered)
-dge_filtered_venn <- DGE_venn(dge_filtered, "FPKM > 0.5")
+DE_filtered <- DGE_calculation(dds_filtered)
+DE_filtered_venn <- DGE_venn(DE_filtered, "FPKM > 0.5")
 
 
 # expression changes between cell lines
-expression_changes_plot <- expression_changes_scatter(dge_full)
+expression_changes_plot <- expression_changes_scatter(DE_full)
 
 
 # volcano plots of DGE in each cell line
-neuronal_volcano <- volcano_plot(dge_full, "neuronal_res_sig", "muscle_res_sig", "NSC34", "#51848a")
-muscle_volcano <- volcano_plot(dge_full, "muscle_res_sig", "neuronal_res_sig", "C2C12", "#8a3838")
+neuronal_volcano <- volcano_plot(DE_full, "neuronal_res_sig", "muscle_res_sig", "NSC34", "#51848a")
+muscle_volcano <- volcano_plot(DE_full, "muscle_res_sig", "neuronal_res_sig", "C2C12", "#8a3838")
 
 
 ######################
@@ -435,24 +435,24 @@ muscle_volcano <- volcano_plot(dge_full, "muscle_res_sig", "neuronal_res_sig", "
 
 
 # Save all plots to disk in the PNG format
-ggsave(filename = paste0(output_folder, "/tdp_expressions.png"), plot = tdp_expressions)
-ggsave(filename = paste0(output_folder, "/pca_plot.png"), plot = pca_plot)
-ggsave(filename = paste0(output_folder, "/pc2_tdp.png"), plot = pc2_tdp)
-ggsave(filename = paste0(output_folder, "/dge_full_venn.png"), plot = dge_full_venn)
-ggsave(filename = paste0(output_folder, "/dge_filtered_venn.png"), plot = dge_filtered_venn)
-ggsave(filename = paste0(output_folder, "/expression_changes_plot.png"), plot = expression_changes_plot)
-ggsave(filename = paste0(output_folder, "/neuronal_volcano.png"), plot = neuronal_volcano)
-ggsave(filename = paste0(output_folder, "/muscle_volcano.png"), plot = muscle_volcano)
+ggsave(filename = paste0(output_folder, "/tdp_expressions.png"), plot = tdp_expressions, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/pca_plot.png"), plot = pca_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/pc2_tdp.png"), plot = pc2_tdp, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/DE_full_venn.png"), plot = DE_full_venn, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/DE_filtered_venn.png"), plot = DE_filtered_venn, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/expression_changes_plot.png"), plot = expression_changes_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/neuronal_volcano.png"), plot = neuronal_volcano, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/muscle_volcano.png"), plot = muscle_volcano, width = 20, height = 15)
 
 # Save DGE results
-neurons_dge <- dge_full[[1]]
-muscle_dge <- dge_full[[2]]
+neurons_DE <- DE_full[[1]]
+muscle_DE <- DE_full[[2]]
 
-neurons_dge$ensembl_id <- rownames(neurons_dge)
-write.csv(neurons_dge, file = paste0(output_folder, "/neuron_dge.csv"), row.names = FALSE)
+neurons_DE$ensembl_id <- rownames(neurons_DE)
+write.csv(neurons_DE, file = paste0(output_folder, "/neuron_DE.csv"), row.names = FALSE)
 
-muscle_dge$ensembl_id <- rownames(muscle_dge)
-write.csv(muscle_dge, file = paste0(output_folder, "/muscle_dge.csv"), row.names = FALSE)
+muscle_DE$ensembl_id <- rownames(muscle_DE)
+write.csv(muscle_DE, file = paste0(output_folder, "/muscle_DE.csv"), row.names = FALSE)
 
 
 # save DESeqDataSet and fpkm values

@@ -128,6 +128,7 @@ RMATS_N     = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt"
 RMATS_M     = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt"
 RMATS_BAMS  = RESULT_DIR + "rMATS_output/control_C2C12.txt"
 DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
+AS_SPLICING = RESULT_DIR + "AS_analysis_output/"
 GO_ANALYSIS = RESULT_DIR + "GO_term_analysis/"
 
 ############
@@ -141,6 +142,7 @@ rule all:
         RMATS_N,
         RMATS_M,
         DESEQ,
+        AS_SPLICING,
         GO_ANALYSIS
     message:
         "RNA-seq pipeline run complete!"
@@ -300,14 +302,14 @@ rule rMATS_neuron:
         NSC34_experimental_paths = rules.rMATS_inputs.output.experimental_NSC34_paths,
         NSC34_control_paths = rules.rMATS_inputs.output.control_NSC34_paths
     output:
-        rmats_summary = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt"
+        rmats_summary = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt",
+        rmats_output_dir    = directory(RESULT_DIR + "rMATS_output/rMATS_neuron/"),
+        temp_output_dir     = directory(RESULT_DIR + "rMATS_output/rMATS_neuron/tmp/")
     params:
         read_length         = config["rmats"]["read_length"],
         read_type           = config["rmats"]["read_type"],
         gtf_file            = config["refs"]["gtf"],
-        rmats_exe           = config["rmats"]['rmats_executable'],
-        rmats_output_dir    = RESULT_DIR + "rMATS_output/rMATS_neuron",
-        temp_output_dir     = RESULT_DIR + "rMATS_output/rMATS_neuron/tmp/"
+        rmats_exe           = config["rmats"]['rmats_executable']
     threads: 14
     message: "Running rMATS on neuronal cells"
     shell:
@@ -318,8 +320,8 @@ rule rMATS_neuron:
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
-        "--od {params.rmats_output_dir} "
-        "--tmp {params.temp_output_dir}"
+        "--od {output.rmats_output_dir} "
+        "--tmp {output.temp_output_dir}"
 
 # Muscle cells
 rule rMATS_muscle:
@@ -327,14 +329,14 @@ rule rMATS_muscle:
         C2C12_experimental_paths = rules.rMATS_inputs.output.experimental_C2C12_paths,
         C2C12_control_paths = rules.rMATS_inputs.output.control_C2C12_paths
     output:
-        rmats_summary = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt"
+        rmats_summary       = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt",
+        rmats_output_dir    = directory(RESULT_DIR + "rMATS_output/rMATS_muscle/"),
+        temp_output_dir     = directory(RESULT_DIR + "rMATS_output/rMATS_muscle/tmp/")
     params:
         read_length         = config["rmats"]["read_length"],
         read_type           = config["rmats"]["read_type"],
         gtf_file            = config["refs"]["gtf"],
-        rmats_exe           = config["rmats"]['rmats_executable'],
-        rmats_output_dir    = RESULT_DIR + "rMATS_output/rMATS_muscle",
-        temp_output_dir     = RESULT_DIR + "rMATS_output/rMATS_muscle/tmp/"
+        rmats_exe           = config["rmats"]['rmats_executable']
     threads: 14
     message: "Running rMATS on muscle cells"
     shell:
@@ -345,8 +347,8 @@ rule rMATS_muscle:
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
-        "--od {params.rmats_output_dir} "
-        "--tmp {params.temp_output_dir}"
+        "--od {output.rmats_output_dir} "
+        "--tmp {output.temp_output_dir}"
 
 ###########################################
 # Produce table of normalised gene counts #
@@ -356,8 +358,8 @@ rule DESeq2:
         raw       = RESULT_DIR + "featureCounts/feature_counts_table.tsv",
         metadata  = config["samples"]
     output:
-        neuron_dge  = RESULT_DIR + "DESeq2_output/neuron_dge.csv",
-        muscle_dge  = RESULT_DIR + "DESeq2_output/muscle_dge.csv",
+        neuron_DE  = RESULT_DIR + "DESeq2_output/neuron_DE.csv",
+        muscle_DE  = RESULT_DIR + "DESeq2_output/muscle_DE.csv",
         fpkm_values = RESULT_DIR + "DESeq2_output/fpkm_values.csv",
         DESeq2_dds  = RESULT_DIR + "DESeq2_output/DESeq2_output.rds",
         output_dir  = directory(RESULT_DIR + "DESeq2_output/")
@@ -367,20 +369,35 @@ rule DESeq2:
         "mkdir -p {RESULT_DIR}DESeq2_output; "
         "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.output_dir}"
 
+#################################
+# Alternative splicing analysis # 
+#################################
+rule alternative_splicing:
+    input:
+        neuron_rMATS = rules.rMATS_neuron.output.rmats_output_dir,
+        muscle_rMATS = rules.rMATS_muscle.output.rmats_output_dir
+    output:
+        output_dir  = directory(RESULT_DIR + "AS_analysis_output/")
+    message:
+        "Running alternative_splicing R script"
+    shell:
+        "Rscript --vanilla scripts/alternative_splicing.R {input.neuron_rMATS} {input.muscle_rMATS} {output.output_dir}"
 
 ###############
 # GO analysis # 
 ###############
-rule GOanalysis:
+rule GO_analysis:
     input:
-        neuronal_dge = rules.DESeq2.output.neuron_dge,
-        muscular_dge = rules.DESeq2.output.muscle_dge
+        differential_expression_results  = rules.DESeq2.output.output_dir,
+        alternative_splicing_results = rules.alternative_splicing.output.output_dir
     output:
-        ego_neuron  = RESULT_DIR + "GO_term_analysis/ego_neuron.csv",
-        ego_muscle  = RESULT_DIR + "GO_term_analysis/ego_muscle.csv",
-        output_dir  = RESULT_DIR + "GO_term_analysis"
+        output_dir  = directory(RESULT_DIR + "GO_term_analysis"),
+        DE_go_neuron   = RESULT_DIR + "GO_term_analysis/DE_go_neuron.csv",
+        DE_go_muscle   = RESULT_DIR + "GO_term_analysis/DE_go_muscle.csv",
+        AS_go_neuron   = RESULT_DIR + "GO_term_analysis/AS_go_neuron.csv",
+        AS_go_muscle   = RESULT_DIR + "GO_term_analysis/AS_go_muscle.csv"
     message:
-        "Running GO_analysis"
+        "Running GO_analysis R script"
     shell:
         "mkdir -p {output.output_dir}; "
-        "Rscript --vanilla scripts/GO_analysis {input.neuronal_dge} {input.muscular_dge} {output.output_dir}"
+        "Rscript --vanilla scripts/GO_analysis.R {input.differential_expression_results} {input.alternative_splicing_results} {output.output_dir}"

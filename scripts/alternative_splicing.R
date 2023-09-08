@@ -7,9 +7,9 @@ library(tidyr)
 # Inputs/ output paths # 
 ########################
 args <- commandArgs(trailingOnly = TRUE)
-neuron_as_path <- "./results/rMATS_output/rMATS_neuron/" # args[1]
-muscle_as_path <- "./results/rMATS_output/rMATS_muscle/" # args[2]
-output_dir <- "./results/AS_analysis_output/" # args[3]
+neuron_as_path <- paste0(args[1], "/")
+muscle_as_path <- paste0(args[2], "/")
+output_dir <- paste0(args[3], "/")
 
 AS_events_types = c("SE", "MXE", "RI", "A3SS", "A5SS")
 
@@ -28,8 +28,8 @@ nature_theme <- function(
         panel.background = element_rect(fill = "white", color = NA),
 
         # Set the size and color of the axis lines and ticks
-        axis.line = element_line(size = 1, color = "black"),
-        axis.ticks = element_line(size = 1, color = "black"),
+        axis.line = element_line(linewidth  = 1, color = "black"),
+        axis.ticks = element_line(linewidth  = 1, color = "black"),
 
         # Set the font size and color of the axis text and title
         axis.text = element_text(size = rel(1.5), color = "#5c5a5a"),
@@ -90,7 +90,7 @@ horizontal_bar_plotting <- function(plotting_data) {
         nature_theme() +
         scale_fill_manual(values = c("#688b68", "#89a164", "#cb940a")) +
         geom_text(data = plotting_data[!duplicated(plotting_data$Splice_type),], 
-                    aes(label = paste0(Percentage_common,"%")), size = 7, hjust = -2, nudge_y = 600)
+                    aes(label = paste0(Percentage_common,"%")), size = 7, hjust = -2.5, nudge_y = 600)
 }
 
 AS_venn <- function(transcript_sets, title) {
@@ -248,6 +248,6 @@ for (name in names(muscle_df_list)) {
 }
 
 # saving figures 
-ggsave(filename = paste0(output_dir, "splicing_horizontal_bar_plot.png"), plot = bar_plot)
-ggsave(filename = paste0(output_dir, "AS_transcripts_venn.png"), plot = AS_transcripts_venn)
-ggsave(filename = paste0(output_dir, "AS_genes_venn.png"), plot = AS_genes_venn)
+ggsave(filename = paste0(output_dir, "splicing_horizontal_bar_plot.png"), plot = bar_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_dir, "AS_transcripts_venn.png"), plot = AS_transcripts_venn, width = 20, height = 15)
+ggsave(filename = paste0(output_dir, "AS_genes_venn.png"), plot = AS_genes_venn, width = 20, height = 15)
