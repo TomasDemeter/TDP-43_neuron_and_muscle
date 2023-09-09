@@ -7,21 +7,22 @@ library(biomaRt)
 library(ggrepel)
 library(dplyr)
 library(readxl)
-#---
-raw_counts_filepath <- "results/featureCounts/feature_counts_table.tsv"
-meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
-output_folder <- "results/DESeq2_output"
 
-#---
+
+#raw_counts_filepath <- "results/feature_counts_table.tsv"
+#meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
+#RBPs_path <- "./data/RNAbinding_proteins_GeneIDs.xlsx"
+#output_folder <- "results/DESeq2_output"
 
 ####################
 # Loading the data #
 ####################
 
 args <- commandArgs(trailingOnly = TRUE)
-raw_counts_filepath <- args[1] # "results/feature_counts_table.tsv" #
-meta_data_filepath <- args[2] # "data/raw_reads/SRR_metadata.csv" #
-output_folder <-  args[3] # "results/DESeq2_output" #
+raw_counts_filepath <- args[1] 
+meta_data_filepath <- args[2] 
+RBPs_path <- args[3]
+output_folder <- args[4]
 
 # load featureCounts output, metadata adn gtf file
 raw_counts <- read.csv(raw_counts_filepath, skip = 1, sep = "\t", row.names="Geneid")
@@ -375,6 +376,105 @@ volcano_plot <- function(dds, data_frame_1, data_frame_2, cell_names, colour) {
   return(volcano)
 }
 
+############################
+# get RBPs for DE analysis #
+############################
+get_RBPs <- function(path, fpmks){
+  RBPs_IDs <- read_excel(path)
+  RBPs_IDs <- RBPs_IDs$GeneID
+  ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+  ensembl_ids = getBM(attributes='ensembl_gene_id', filters = 'mgi_symbol', values = RBPs_IDs, mart = ensembl)
+  fpmk_RBPs <- as.data.frame(fpkm_values[rownames(fpkm_values) %in% ensembl_ids$ensembl_gene_id, ])
+
+  # Convert the data to a data frame
+  fpmk_RBPs <- as.data.frame(fpmk_RBPs)
+  fpmk_RBPs <- fpmk_RBPs + 1
+
+  # Reshape the data to long format
+  fpmk_RBPs <- fpmk_RBPs %>%
+    rownames_to_column(var = "gene") %>%
+    pivot_longer(cols = -gene, names_to = "sample", values_to = "expression") %>%
+    mutate(cell_type = ifelse(sample %in% colnames(fpmk_RBPs)[1:6], "C2C12", "NSC34")) %>%
+    group_by(gene, cell_type) %>%
+    summarize(avg_expression = mean(expression))
+
+  return(fpmk_RBPs)
+}
+
+########################
+# plot boxplot of RBPs #
+########################
+RBPs_boxplot <- function(fpmk_RBPs) {
+  wilcox_result <- wilcox.test(avg_expression ~ cell_type, data = fpmk_RBPs)
+  p_value <- wilcox_result$p.value
+
+  # Create a significance label using asterisks
+  if (p_value < 0.001) {
+    sig_label <- "***"
+  } else if (p_value < 0.01) {
+    sig_label <- "**"
+  } else if (p_value < 0.05) {
+    sig_label <- "*"
+  } else {
+    sig_label <- "ns"
+  }
+
+  RBPs_box <- ggplot(fpmk_RBPs, aes(x = cell_type, y = log10(avg_expression), fill = cell_type)) +
+    geom_boxplot(notch = TRUE) +
+    scale_fill_manual(values = c("C2C12" = "#8a3838", "NSC34" = "#51848a")) +
+    labs(x = "", y = "Log10(FPKM + 1)") +
+    ylim(0, 3) +
+    nature_theme() +
+    theme(legend.position = "none") + 
+    annotate("text", x = 1.5, y = 3, label = sig_label, size = 6) +
+    geom_segment(aes(x = 1.2, y = 2.9, xend = 1.8, yend = 2.9))
+  
+  return(RBPs_box)
+}
+
+
+###################################
+# Create the scatter plot of RBPs #
+###################################
+RBP_scatter_plotting <- function(RBPs) {
+  ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+  gene_ids <- getBM(attributes = c("ensembl_gene_id", "mgi_symbol"),
+                    filters = "ensembl_gene_id",
+                    values = unique(RBPs$gene),  # Only get unique gene IDs
+                    mart = ensembl)
+  RBPs <- RBPs %>%
+    left_join(gene_ids, by = c("gene" = "ensembl_gene_id"))
+  RBPs <- tidyr::spread(RBPs, cell_type, avg_expression)
+  RBPs$cell_type <- ifelse(RBPs$C2C12 > RBPs$NSC34, "C2C12", "NSC34")
+
+  cor.test.result <- cor.test(log10(RBPs$C2C12), log10(RBPs$NSC34), method = "spearman")
+  rho <- cor.test.result$estimate
+  p.value <- cor.test.result$p.value
+
+    # Format the p-value
+  if (p.value < 0.001) {
+    sig_label <- "<0.001"
+  } else if (p.value < 0.01) {
+    sig_label <- "<0.01"
+  } else if (p.value < 0.05) {
+    sig_label <- "<0.05"
+  } else {
+    sig_label <- "ns"
+  }
+
+  RBP_scatter <- ggplot(RBPs, aes(x = log10(C2C12), y = log10(NSC34))) +
+    geom_point(aes(color = cell_type, size = 5), show.legend = FALSE) +
+    geom_abline(intercept = 0, slope = 1, color = "grey") +
+    scale_color_manual(values = c("C2C12" = "#8a3838", "NSC34" = "#51848a")) +
+    labs(x = "Log10(FPKM + 1) in C2C12", y = "Log10(FPKM + 1) in NSC34") +
+    geom_label_repel(aes(label = mgi_symbol, color = cell_type), size = 5, force = 10, box.padding = 0.5, direction = "both", show.legend = FALSE) +
+    annotate("text", x = 2, y = 0, label = paste("Spearman's rho =", round(rho, 2), "\np-value =", sig_label), hjust = 0, vjust = 0, size = 6) +
+    theme() +
+    nature_theme()
+
+  return(RBP_scatter)
+}
+
 
 
 ########################
@@ -398,7 +498,6 @@ dds <- generate_dds(counts, sample_data, experimental_design_formula, gene_lengt
 # calculate fpkm
 fpkm_values <- fpkm(dds)
 
-
 # Perform PCA on the FPKM values
 pca_res <- prcomp(t(fpkm_values), scale = TRUE)
 
@@ -411,14 +510,12 @@ pca_plot <- pca_plotting(pca_res)
 # pca2 vs tdp-43 expression
 pc2_tdp <- pc2_vs_gene(dds, fpkm_values, pca_res, "ENSMUSG00000041459")
 
-
-
 # DGE of all the genes
 DE_full <- DGE_calculation(dds)
 DE_full_venn <- DGE_venn(DE_full, "DGE")
 
 # DGE of genes with fpkm > 0.5 in each sample
-keep <- rowSums(fpkm_values > 0.5) > 0
+keep <- apply(fpkm_values, MARGIN = 1, FUN = function(x) all(x > 0.5))
 dds_filtered <- dds[keep,]
 
 DE_filtered <- DGE_calculation(dds_filtered)
@@ -433,65 +530,21 @@ expression_changes_plot <- expression_changes_scatter(DE_full)
 neuronal_volcano <- volcano_plot(DE_full, "neuronal_res_sig", "muscle_res_sig", "NSC34", "#51848a")
 muscle_volcano <- volcano_plot(DE_full, "muscle_res_sig", "neuronal_res_sig", "C2C12", "#8a3838")
 
+# box plot
+RBPs <- get_RBPs(RBPs_path, fpkm_values)
+RBPs_box <- RBPs_boxplot(RBPs)
 
+# RBPs scatterplot
+RBPs_scatter_plot <- RBP_scatter_plotting(RBPs)
 
+# DE RBPs venn 
+neurons_DE <- as.data.frame(DE_full[[1]])
+muscle_DE <- as.data.frame(DE_full[[2]])
+RBPs_neurons_DE <- neurons_DE[rownames(neurons_DE) %in% RBPs$gene, ]
+RBPs_muscle_DE <- muscle_DE[rownames(muscle_DE) %in% RBPs$gene, ]
+RBPs_list <- list(RBPs_muscle_DE, RBPs_neurons_DE)
 
-
-#----
-RNAbinding_proteins_IDs <- read_excel("./data/RNAbinding_proteins_GeneIDs.xlsx")
-RNAbinding_proteins_IDs <- RNAbinding_proteins_IDs$GeneID
-ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
-ensembl_ids = getBM(attributes='ensembl_gene_id', filters = 'mgi_symbol', values = RNAbinding_proteins_IDs, mart = ensembl)
-fpmk_RNAbinding_proteins <- as.data.frame(fpkm_values[rownames(fpkm_values) %in% ensembl_ids$ensembl_gene_id, ])
-
-# Convert the data to a data frame
-fpmk_RNAbinding_proteins <- as.data.frame(fpmk_RNAbinding_proteins)
-fpmk_RNAbinding_proteins <- fpmk_RNAbinding_proteins + 1
-
-# Reshape the data to long format
-fpmk_RNAbinding_proteins <- fpmk_RNAbinding_proteins %>%
-  rownames_to_column(var = "gene") %>%
-  pivot_longer(cols = -gene, names_to = "sample", values_to = "expression") %>%
-  mutate(cell_type = ifelse(sample %in% colnames(fpmk_RNAbinding_proteins)[1:6], "C2C12", "NSC34")) %>%
-  group_by(gene, cell_type) %>%
-  summarize(avg_expression = mean(expression))
-
-# Get the p-value
-
-wilcox_result <- wilcox.test(avg_expression ~ cell_type, data = fpmk_RNAbinding_proteins)
-p_value <- wilcox_result$p.value
-
-# Create a significance label using asterisks
-if (p_value < 0.001) {
-  sig_label <- "***"
-} else if (p_value < 0.01) {
-  sig_label <- "**"
-} else if (p_value < 0.05) {
-  sig_label <- "*"
-} else {
-  sig_label <- "ns"
-}
-
-# Create the box plot
-RNAbinding_proteins_box <- ggplot(fpmk_RNAbinding_proteins, aes(x = cell_type, y = log10(avg_expression), fill = cell_type)) +
-  geom_boxplot(notch = TRUE) +
-  scale_fill_manual(values = c("C2C12" = "#8a3838", "NSC34" = "#51848a")) +
-  labs(x = "", y = "Log10(FPKM + 1)") +
-  ylim(0, 3) +
-  nature_theme() +
-  theme(legend.position = "none") + 
-  annotate("text", x = 1.5, y = 3, label = sig_label, size = 6) +
-  geom_segment(aes(x = 1.2, y = 2.9, xend = 1.8, yend = 2.9))
-
-RNAbinding_proteins_box
-
-
-
-#----
-
-
-
-
+RBP_venn <- DGE_venn(RBPs_list, "DE RBPs") # add list of the genes
 
 
 ######################
@@ -510,11 +563,11 @@ ggsave(filename = paste0(output_folder, "/DE_filtered_venn.png"), plot = DE_filt
 ggsave(filename = paste0(output_folder, "/expression_changes_plot.png"), plot = expression_changes_plot, width = 20, height = 15)
 ggsave(filename = paste0(output_folder, "/neuronal_volcano.png"), plot = neuronal_volcano, width = 20, height = 15)
 ggsave(filename = paste0(output_folder, "/muscle_volcano.png"), plot = muscle_volcano, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/RBPs_box.png"), plot = RBPs_box, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/RBPs_scatter_plot.png"), plot = RBPs_scatter_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/RBP_venn.png"), plot = RBP_venn, width = 20, height = 15)
 
 # Save DGE results
-neurons_DE <- DE_full[[1]]
-muscle_DE <- DE_full[[2]]
-
 neurons_DE$ensembl_id <- rownames(neurons_DE)
 write.csv(neurons_DE, file = paste0(output_folder, "/neuron_DE.csv"), row.names = FALSE)
 

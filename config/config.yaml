@@ -26,6 +26,10 @@ fastp:
   # rmats
 rmats:
   output_dir: "results/rMATS_output"
-  rmats_executable: "/home/tomasd/miniconda3/envs/RNAseqR/rMATS/rmats.py" 
+  rmats_executable: "/home/tomasd/miniconda3/envs/RNAseqR/rMATS/rmats.py"
+  FDR_cutoff: 0.01 
   read_length: 150
   read_type: paired
+
+DESeq2:
+  RNAbinding_proteins: "data/RNAbinding_proteins_GeneIDs.xlsx"

@@ -308,6 +308,7 @@ rule rMATS_neuron:
     params:
         read_length         = config["rmats"]["read_length"],
         read_type           = config["rmats"]["read_type"],
+        FDR_cutoff          = config["rmats"]["FDR_cutoff"],
         gtf_file            = config["refs"]["gtf"],
         rmats_exe           = config["rmats"]['rmats_executable']
     threads: 14
@@ -317,6 +318,7 @@ rule rMATS_neuron:
         "--b1 {input.NSC34_experimental_paths} "
         "--b2 {input.NSC34_control_paths} "
         "--gtf {params.gtf_file} "
+        "--cstat {params.FDR_cutoff} "
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
@@ -335,6 +337,7 @@ rule rMATS_muscle:
     params:
         read_length         = config["rmats"]["read_length"],
         read_type           = config["rmats"]["read_type"],
+        FDR_cutoff          = config["rmats"]["FDR_cutoff"],
         gtf_file            = config["refs"]["gtf"],
         rmats_exe           = config["rmats"]['rmats_executable']
     threads: 14
@@ -344,6 +347,7 @@ rule rMATS_muscle:
         "--b1 {input.C2C12_experimental_paths} "
         "--b2 {input.C2C12_control_paths} "
         "--gtf {params.gtf_file} "
+        "--cstat {params.FDR_cutoff} "
         "-t {params.read_type} "
         "--nthread {threads} "
         "--readLength {params.read_length} "
@@ -355,11 +359,12 @@ rule rMATS_muscle:
 ###########################################
 rule DESeq2:
     input:
-        raw       = RESULT_DIR + "featureCounts/feature_counts_table.tsv",
-        metadata  = config["samples"]
+        raw         = RESULT_DIR + "featureCounts/feature_counts_table.tsv",
+        metadata    = config["samples"],
+        RBPs        = config["DESeq2"]["RNAbinding_proteins"]
     output:
-        neuron_DE  = RESULT_DIR + "DESeq2_output/neuron_DE.csv",
-        muscle_DE  = RESULT_DIR + "DESeq2_output/muscle_DE.csv",
+        neuron_DE   = RESULT_DIR + "DESeq2_output/neuron_DE.csv",
+        muscle_DE   = RESULT_DIR + "DESeq2_output/muscle_DE.csv",
         fpkm_values = RESULT_DIR + "DESeq2_output/fpkm_values.csv",
         DESeq2_dds  = RESULT_DIR + "DESeq2_output/DESeq2_output.rds",
         output_dir  = directory(RESULT_DIR + "DESeq2_output/")
@@ -367,7 +372,7 @@ rule DESeq2:
         "Running DESeq2"
     shell:
         "mkdir -p {RESULT_DIR}DESeq2_output; "
-        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {output.output_dir}"
+        "Rscript --vanilla scripts/DESeq2.R {input.raw} {input.metadata} {input.RBPs} {output.output_dir}"
 
 #################################
 # Alternative splicing analysis # 
