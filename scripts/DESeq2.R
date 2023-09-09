@@ -5,7 +5,14 @@ library(ggplot2)
 library(ggVennDiagram)
 library(biomaRt)
 library(ggrepel)
+library(dplyr)
+library(readxl)
+#---
+raw_counts_filepath <- "results/featureCounts/feature_counts_table.tsv"
+meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
+output_folder <- "results/DESeq2_output"
 
+#---
 
 ####################
 # Loading the data #
@@ -425,6 +432,66 @@ expression_changes_plot <- expression_changes_scatter(DE_full)
 # volcano plots of DGE in each cell line
 neuronal_volcano <- volcano_plot(DE_full, "neuronal_res_sig", "muscle_res_sig", "NSC34", "#51848a")
 muscle_volcano <- volcano_plot(DE_full, "muscle_res_sig", "neuronal_res_sig", "C2C12", "#8a3838")
+
+
+
+
+
+#----
+RNAbinding_proteins_IDs <- read_excel("./data/RNAbinding_proteins_GeneIDs.xlsx")
+RNAbinding_proteins_IDs <- RNAbinding_proteins_IDs$GeneID
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
+ensembl_ids = getBM(attributes='ensembl_gene_id', filters = 'mgi_symbol', values = RNAbinding_proteins_IDs, mart = ensembl)
+fpmk_RNAbinding_proteins <- as.data.frame(fpkm_values[rownames(fpkm_values) %in% ensembl_ids$ensembl_gene_id, ])
+
+# Convert the data to a data frame
+fpmk_RNAbinding_proteins <- as.data.frame(fpmk_RNAbinding_proteins)
+fpmk_RNAbinding_proteins <- fpmk_RNAbinding_proteins + 1
+
+# Reshape the data to long format
+fpmk_RNAbinding_proteins <- fpmk_RNAbinding_proteins %>%
+  rownames_to_column(var = "gene") %>%
+  pivot_longer(cols = -gene, names_to = "sample", values_to = "expression") %>%
+  mutate(cell_type = ifelse(sample %in% colnames(fpmk_RNAbinding_proteins)[1:6], "C2C12", "NSC34")) %>%
+  group_by(gene, cell_type) %>%
+  summarize(avg_expression = mean(expression))
+
+# Get the p-value
+
+wilcox_result <- wilcox.test(avg_expression ~ cell_type, data = fpmk_RNAbinding_proteins)
+p_value <- wilcox_result$p.value
+
+# Create a significance label using asterisks
+if (p_value < 0.001) {
+  sig_label <- "***"
+} else if (p_value < 0.01) {
+  sig_label <- "**"
+} else if (p_value < 0.05) {
+  sig_label <- "*"
+} else {
+  sig_label <- "ns"
+}
+
+# Create the box plot
+RNAbinding_proteins_box <- ggplot(fpmk_RNAbinding_proteins, aes(x = cell_type, y = log10(avg_expression), fill = cell_type)) +
+  geom_boxplot(notch = TRUE) +
+  scale_fill_manual(values = c("C2C12" = "#8a3838", "NSC34" = "#51848a")) +
+  labs(x = "", y = "Log10(FPKM + 1)") +
+  ylim(0, 3) +
+  nature_theme() +
+  theme(legend.position = "none") + 
+  annotate("text", x = 1.5, y = 3, label = sig_label, size = 6) +
+  geom_segment(aes(x = 1.2, y = 2.9, xend = 1.8, yend = 2.9))
+
+RNAbinding_proteins_box
+
+
+
+#----
+
+
+
+
 
 
 ######################
