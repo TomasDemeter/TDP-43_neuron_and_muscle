@@ -282,6 +282,8 @@ rule multiqc:
 # Generating input files for rMATS #
 ####################################    
 rule rMATS_inputs:
+    input:
+        bam = expand(rules.hisat2_samtools.output.bam, SRR=SAMPLES)
     output:
         rmats_output_dir            = directory(config["rmats"]["output_dir"]),
         experimental_NSC34_paths    = RESULT_DIR + "rMATS_output/experimental_NSC34.txt",
