@@ -9,7 +9,7 @@ library(dplyr)
 library(readxl)
 
 
-#raw_counts_filepath <- "results/feature_counts_table.tsv"
+#raw_counts_filepath <- "results//featureCounts/feature_counts_table.tsv"
 #meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
 #RBPs_path <- "./data/RNAbinding_proteins_GeneIDs.xlsx"
 #output_folder <- "results/DESeq2_output"
@@ -129,7 +129,7 @@ generate_dds <- function(counts, sample_data, experimental_design, gene_lengths)
 
   rowData(dds)$gene_id <- gene_ids$mgi_symbol[match(rownames(rowData(dds)), gene_ids$ensembl_gene_id)]
 
-  # filter out genese with less than 1 read in all samples
+  # filter out genes with less than 1 read in all samples
   dds <- dds[which(rowSums(counts(dds)) >= 1),]
 
   return(dds)
@@ -321,14 +321,27 @@ expression_changes_scatter <- function(dds) {
   rho <- cor.test$estimate
   p.value <- cor.test$p.value
 
+  # Format the p-value
+  if (p.value < 0.001) {
+    sig_label <- "<0.001"
+  } else if (p.value < 0.01) {
+    sig_label <- "<0.01"
+  } else if (p.value < 0.05) {
+    sig_label <- "<0.05"
+  } else {
+    sig_label <- "ns"
+  }
+
   # create the plot
   expression_changes <- ggplot(merged_data) +
     geom_point(aes(x = muscle_res_sig.log2FoldChange, y = neuronal_res_sig.log2FoldChange)) +
     geom_abline(intercept = 0, slope = 1, color = "grey") +
+    geom_hline(yintercept = 0, color = "grey") +
+    geom_vline(xintercept = 0, color = "grey") +
     geom_smooth(aes(x = muscle_res_sig.log2FoldChange, y = neuronal_res_sig.log2FoldChange), method = "lm", color = "#51848a") +
     xlab("log2 (fold change) in C2C12") +
     ylab("log2 (fold change) in NSC34") + 
-    annotate("text", x = 1.9, y = -1.9, label = paste("Spearman's ρ =", round(rho, 2), "\np-value =", format.pval(p.value, digits = 1)), hjust = 1, size = 6) +
+    annotate("text", x = 1.9, y = -1.9, label = paste("Spearman's rho =", round(rho, 2), "\np-value =", sig_label), hjust = 1, size = 6) +
     nature_theme() +
     xlim(-2, 2) +
     ylim(-2, 2) +

@@ -8,6 +8,13 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 
+
+DE_path <- "./results/DESeq2_output/"
+AS_path <- "./results/DESeq2_output/"
+output_folder <- "./results/GO_term_analysis/"
+####################
+# Loading the data #
+####################
 args <- commandArgs(trailingOnly = TRUE)
 DE_path <-  paste0(args[1], "/")
 AS_path <- paste0(args[2], "/")
@@ -62,7 +69,6 @@ go_term_analysis <- function(condition_df) {
                     OrgDb = org.Mm.eg.db,
                     ont = "BP",
                     pAdjustMethod = "BH",
-                    pvalueCutoff = 0.05,
                     qvalueCutoff = 0.05)
     return(ego)
 }
@@ -244,7 +250,7 @@ AS_go_muscle <- go_term_analysis(muscle_data_combined)
 
 
 # plotting GO terms of alternatively spliced genes
-go_venn_plot <- EGO_venn(AS_go_muscle, AS_go_neuron, "C2C12", "NSC34", "GO terms of AS genes")
+AS_go_venn_plot <- EGO_venn(AS_go_muscle, AS_go_neuron, "C2C12", "NSC34", "GO terms of AS genes")
 
 
 # extracting cell type specific GO terms
@@ -304,7 +310,7 @@ common_AS_GO_plot <- unique_GO_terms_bar(common_go_df)
 # saving the figures
 ggsave(filename = paste0(output_folder, "/ego_venn_plot.png"), plot = ego_venn_plot, width = 20, height = 15)
 ggsave(filename = paste0(output_folder, "/ego_terms_plot.png"), plot = ego_terms_plot, width = 20, height = 15)
-ggsave(filename = paste0(output_folder, "/go_venn_plot.png"), plot = go_venn_plot, width = 20, height = 15)
+ggsave(filename = paste0(output_folder, "/AS_go_venn_plot.png"), plot = AS_go_venn_plot, width = 20, height = 15)
 ggsave(filename = paste0(output_folder, "/neuron_AS_GO_plot.png"), plot = neuron_AS_GO_plot, width = 20, height = 15)
 ggsave(filename = paste0(output_folder, "/muscle_AS_GO_plot.png"), plot = muscle_AS_GO_plot, width = 20, height = 15)
 ggsave(filename = paste0(output_folder, "/common_AS_GO_plot.png"), plot = common_AS_GO_plot, width = 20, height = 15)
