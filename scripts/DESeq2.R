@@ -11,7 +11,7 @@ library(readxl)
 
 #raw_counts_filepath <- "results//featureCounts/feature_counts_table.tsv"
 #meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
-#RBPs_path <- "./data/RNAbinding_proteins_GeneIDs.xlsx"
+#RBPs_path <- "./data/RNAbinding_proteins_GeneIDs.csv"
 #output_folder <- "results/DESeq2_output"
 
 ####################
@@ -393,22 +393,19 @@ volcano_plot <- function(dds, data_frame_1, data_frame_2, cell_names, colour) {
 # get RBPs for DE analysis #
 ############################
 get_RBPs <- function(path, fpmks){
-  RBPs_IDs <- read_excel(path)
-  RBPs_IDs <- RBPs_IDs$GeneID
+  RBPs_IDs <- read.csv(path)
   ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
-  ensembl_ids = getBM(attributes='ensembl_gene_id', filters = 'mgi_symbol', values = RBPs_IDs, mart = ensembl)
-  fpmk_RBPs <- as.data.frame(fpkm_values[rownames(fpkm_values) %in% ensembl_ids$ensembl_gene_id, ])
+  RBPs_IDs$ensembl_ids <- getBM(attributes='ensembl_gene_id', filters = 'mgi_symbol', values = RBPs_IDs$GeneID, mart = ensembl)$ensembl_gene_id
+  fpkm_values <- as.data.frame(fpkm_values)
+  fpkm_values <- fpkm_values %>%
+                  rownames_to_column(var = "ensembl_ids")
+  fpmk_RBPs <- left_join(RBPs_IDs, fpkm_values, by = "ensembl_ids") 
+  fpmk_RBPs[, 3:ncol(fpmk_RBPs)] <- fpmk_RBPs[, 3:ncol(fpmk_RBPs)] + 1
 
-  # Convert the data to a data frame
-  fpmk_RBPs <- as.data.frame(fpmk_RBPs)
-  fpmk_RBPs <- fpmk_RBPs + 1
-
-  # Reshape the data to long format
   fpmk_RBPs <- fpmk_RBPs %>%
-    rownames_to_column(var = "gene") %>%
-    pivot_longer(cols = -gene, names_to = "sample", values_to = "expression") %>%
+    pivot_longer(cols = -c(GeneID, ensembl_ids), names_to = "sample", values_to = "expression") %>%
     mutate(cell_type = ifelse(sample %in% colnames(fpmk_RBPs)[1:6], "C2C12", "NSC34")) %>%
-    group_by(gene, cell_type) %>%
+    group_by(GeneID, ensembl_ids, cell_type) %>%
     summarize(avg_expression = mean(expression))
 
   return(fpmk_RBPs)
@@ -450,13 +447,7 @@ RBPs_boxplot <- function(fpmk_RBPs) {
 # Create the scatter plot of RBPs #
 ###################################
 RBP_scatter_plotting <- function(RBPs) {
-  ensembl <- useEnsembl(biomart = "ensembl", dataset = "mmusculus_gene_ensembl")
-  gene_ids <- getBM(attributes = c("ensembl_gene_id", "mgi_symbol"),
-                    filters = "ensembl_gene_id",
-                    values = unique(RBPs$gene),  # Only get unique gene IDs
-                    mart = ensembl)
-  RBPs <- RBPs %>%
-    left_join(gene_ids, by = c("gene" = "ensembl_gene_id"))
+  
   RBPs <- tidyr::spread(RBPs, cell_type, avg_expression)
   RBPs$cell_type <- ifelse(RBPs$C2C12 > RBPs$NSC34, "C2C12", "NSC34")
 
@@ -480,7 +471,7 @@ RBP_scatter_plotting <- function(RBPs) {
     geom_abline(intercept = 0, slope = 1, color = "grey") +
     scale_color_manual(values = c("C2C12" = "#8a3838", "NSC34" = "#51848a")) +
     labs(x = "Log10(FPKM + 1) in C2C12", y = "Log10(FPKM + 1) in NSC34") +
-    geom_label_repel(aes(label = mgi_symbol, color = cell_type), size = 5, force = 10, box.padding = 0.5, direction = "both", show.legend = FALSE) +
+    geom_label_repel(aes(label = GeneID, color = cell_type), size = 5, force = 10, box.padding = 0.5, direction = "both", show.legend = FALSE) +
     annotate("text", x = 2, y = 0, label = paste("Spearman's rho =", round(rho, 2), "\np-value =", sig_label), hjust = 0, vjust = 0, size = 6) +
     theme() +
     nature_theme()
@@ -560,12 +551,12 @@ RBPs_list <- list(RBPs_muscle_DE, RBPs_neurons_DE)
 RBP_venn <- DGE_venn(RBPs_list, "DE RBPs") # add list of the genes
 
 
+
 ######################
 ######################
 # Saving the results #
 ######################
 ######################
-
 
 # Save all plots to disk in the PNG format
 ggsave(filename = paste0(output_folder, "/tdp_expressions.png"), plot = tdp_expressions, width = 20, height = 15)
@@ -592,3 +583,5 @@ write.csv(muscle_DE, file = paste0(output_folder, "/muscle_DE.csv"), row.names =
 saveRDS(dds, file = paste0(output_folder, "/DESeq2_output.rds"))
 write.csv(fpkm_values, file = paste0(output_folder, "/fpkm_values.csv"), row.names = TRUE)
 
+# save differentially expressed RBPs
+write.csv(RBPs, file = paste0(output_folder, "/RBPs_DE.csv"), row.names = FALSE)

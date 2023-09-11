@@ -130,6 +130,7 @@ RMATS_BAMS  = RESULT_DIR + "rMATS_output/control_C2C12.txt"
 DESEQ       = RESULT_DIR + "DESeq2_output/DESeq2_output.rds"
 AS_SPLICING = RESULT_DIR + "AS_analysis_output/"
 GO_ANALYSIS = RESULT_DIR + "GO_term_analysis/"
+BIGWIG      = expand(RESULT_DIR + "bamCoverage/{SRR}.bigwig", SRR = SAMPLES)
 
 ############
 # Pipeline #
@@ -143,7 +144,8 @@ rule all:
         RMATS_M,
         DESEQ,
         AS_SPLICING,
-        GO_ANALYSIS
+        GO_ANALYSIS,
+        BIGWIG
     message:
         "RNA-seq pipeline run complete!"
 
@@ -301,10 +303,10 @@ rule rMATS_inputs:
 # Neurons       
 rule rMATS_neuron:
     input:
-        NSC34_experimental_paths = rules.rMATS_inputs.output.experimental_NSC34_paths,
-        NSC34_control_paths = rules.rMATS_inputs.output.control_NSC34_paths
+        NSC34_experimental_paths    = rules.rMATS_inputs.output.experimental_NSC34_paths,
+        NSC34_control_paths         = rules.rMATS_inputs.output.control_NSC34_paths
     output:
-        rmats_summary = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt",
+        rmats_summary       = RESULT_DIR + "rMATS_output/rMATS_neuron/summary.txt",
         rmats_output_dir    = directory(RESULT_DIR + "rMATS_output/rMATS_neuron/"),
         temp_output_dir     = directory(RESULT_DIR + "rMATS_output/rMATS_neuron/tmp/")
     params:
@@ -330,8 +332,8 @@ rule rMATS_neuron:
 # Muscle cells
 rule rMATS_muscle:
     input:
-        C2C12_experimental_paths = rules.rMATS_inputs.output.experimental_C2C12_paths,
-        C2C12_control_paths = rules.rMATS_inputs.output.control_C2C12_paths
+        C2C12_experimental_paths    = rules.rMATS_inputs.output.experimental_C2C12_paths,
+        C2C12_control_paths         = rules.rMATS_inputs.output.control_C2C12_paths
     output:
         rmats_summary       = RESULT_DIR + "rMATS_output/rMATS_muscle/summary.txt",
         rmats_output_dir    = directory(RESULT_DIR + "rMATS_output/rMATS_muscle/"),
@@ -408,3 +410,21 @@ rule GO_analysis:
     shell:
         "mkdir -p {output.output_dir}; "
         "Rscript --vanilla scripts/GO_analysis.R {input.differential_expression_results} {input.alternative_splicing_results} {output.output_dir}"
+
+###############
+# bamCoverage # 
+###############
+rule bamCoverage:
+    input:
+        bam = rules.hisat2_samtools.output.bam
+    output:
+        bigwig      = RESULT_DIR + "bamCoverage/{SRR}.bigwig"
+    params:
+        output_dir  = directory(RESULT_DIR + "bamCoverage"),
+    threads: 7
+    message:
+        "Running bamCoverage"
+    shell:
+        "mkdir -p {params.output_dir}; "
+        "samtools index {input.bam}; "
+        "bamCoverage --bam {input.bam} --outFileName {output.bigwig} --numberOfProcessors {threads}"

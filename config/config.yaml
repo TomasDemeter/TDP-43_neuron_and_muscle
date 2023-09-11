@@ -32,4 +32,4 @@ rmats:
   read_type: paired
 
 DESeq2:
-  RNAbinding_proteins: "data/RNAbinding_proteins_GeneIDs.xlsx"
+  RNAbinding_proteins: "data/RNAbinding_proteins_GeneIDs.csv"
