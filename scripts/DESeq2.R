@@ -6,7 +6,6 @@ library(ggVennDiagram)
 library(biomaRt)
 library(ggrepel)
 library(dplyr)
-library(readxl)
 
 
 #raw_counts_filepath <- "results//featureCounts/feature_counts_table.tsv"
