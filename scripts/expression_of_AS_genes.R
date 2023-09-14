@@ -40,6 +40,7 @@ nature_theme <- function(
         )
 }
 
+
 read_column <- function(file, column_name) {
     data <- read.csv(file, stringsAsFactors = FALSE)
     return(data[[column_name]])
