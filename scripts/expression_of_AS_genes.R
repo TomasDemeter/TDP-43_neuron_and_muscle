@@ -4,8 +4,6 @@ library(ggplot2)
 library(dplyr)
 library(readr)
 
-
-
 fpkm_values_path <- "results/DESeq2_output/fpkm_values.csv"
 AS_output_path <- "results/AS_analysis_output/"
 
@@ -124,4 +122,3 @@ avg_expressions_boxplot <- AS_expression_boxplot(avg_expressions)
 
 
 ggsave(filename = paste0(AS_output_path, "/avg_expressions_boxplot.png"), plot = avg_expressions_boxplot, width = 20, height = 15)
-
