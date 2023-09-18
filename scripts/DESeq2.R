@@ -8,10 +8,10 @@ library(ggrepel)
 library(dplyr)
 
 
-#raw_counts_filepath <- "results//featureCounts/feature_counts_table.tsv"
-#meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
-#RBPs_path <- "./data/RNAbinding_proteins_GeneIDs.csv"
-#output_folder <- "results/DESeq2_output"
+raw_counts_filepath <- "results//featureCounts/feature_counts_table.tsv"
+meta_data_filepath <- "data/raw_reads/SRR_metadata.csv"
+RBPs_path <- "./data/RNAbinding_proteins_GeneIDs.csv"
+output_folder <- "results/DESeq2_output"
 
 ####################
 # Loading the data #
@@ -543,12 +543,13 @@ RBPs_scatter_plot <- RBP_scatter_plotting(RBPs)
 # DE RBPs venn 
 neurons_DE <- as.data.frame(DE_full[[1]])
 muscle_DE <- as.data.frame(DE_full[[2]])
-RBPs_neurons_DE <- neurons_DE[rownames(neurons_DE) %in% RBPs$gene, ]
-RBPs_muscle_DE <- muscle_DE[rownames(muscle_DE) %in% RBPs$gene, ]
+RBPs_neurons_DE <- neurons_DE[rownames(neurons_DE) %in% RBPs$ensembl_ids, ]
+RBPs_muscle_DE <- muscle_DE[rownames(muscle_DE) %in% RBPs$ensembl_ids, ]
 RBPs_list <- list(RBPs_muscle_DE, RBPs_neurons_DE)
 
-RBP_venn <- DGE_venn(RBPs_list, "DE RBPs") # add list of the genes
+RBP_venn <- DGE_venn(RBPs_list, "DE RBPs")
 
+RBPs_neurons_DE[order(RBPs_neurons_DE$gene_id),]
 
 
 ######################

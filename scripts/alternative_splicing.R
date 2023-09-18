@@ -3,6 +3,12 @@ library(ggVennDiagram)
 library(dplyr)
 library(tidyr)
 
+neuron_as_path <-"results/rMATS_output/rMATS_neuron/"
+muscle_as_path <- "results/rMATS_output/rMATS_muscle/"
+output_dir <- "./results/AS_analysis_output"
+
+
+
 ########################
 # Inputs/ output paths # 
 ########################
