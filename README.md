@@ -2,7 +2,7 @@
 
 This is still a work in progress.
 
-This repository contains the code and results of my reanalysis of the RNA-seq data from the paper “Cell environment shapes TDP-43 function with implications in neuronal and muscle disease” by Šušnjar et al. (2022). The paper investigated the role of TDP-43, a RNA-binding protein involved in various aspects of mRNA metabolism, in mouse muscle (C2C12) and neuronal (NSC34) cells1. The authors identified different sets of transcripts and splicing events that are regulated by TDP-43 in each cell type, and showed that some of them are also altered in human tissues of patients with neurodegenerative and myodegenerative diseases.
+This repository contains the code and results of my reanalysis of the RNA-seq data from the paper “Cell environment shapes TDP-43 function with implications in neuronal and muscle disease” by Šušnjar et al. (2022). The paper investigated the role of TDP-43, a RNA-binding protein involved in various aspects of mRNA metabolism, in mouse muscle (C2C12) and neuronal (NSC34) cells. The authors identified different sets of transcripts and splicing events that are regulated by TDP-43 in each cell type, and showed that some of them are also altered in human tissues of patients with neurodegenerative and myodegenerative diseases.
 
 I reprocessed the raw sequencing data from scratch using Snakemake, a workflow management system that allows for reproducible and scalable data analysis. Snakemake enables the definition of analysis steps as rules that can be executed in parallel and automatically handles the dependencies between them. Snakemake also tracks the changes in the input and output files, and only reruns the necessary rules when something is modified.
 
